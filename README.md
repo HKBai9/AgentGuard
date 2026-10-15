@@ -23,6 +23,36 @@
 
 ---
 
+## 一点五、作为工具使用（开发者接入）
+
+AgentGuard 不只是演示品，它是一个**可以接进你自己 Agent 的 SDK**：
+
+```python
+from agentguard import AgentGuard
+
+guard = AgentGuard(task=user_task)        # 传入用户原始任务
+safe_tools = guard.wrap_tools(my_tools)   # 只替换工具表
+
+# 之后把 safe_tools 交给你的 Agent —— 循环、模型、框架都不用改
+```
+
+越权调用**不会被执行**，Agent 收到的是一段它能读懂的说明（含"哪一层拦的、
+为什么、别重试"）。
+
+配套的命令行工具可以直接进 CI：
+
+```bash
+agentguard check config/permission_baseline.yaml   # 校验策略 + 打印权限边界
+agentguard test  config/permission_baseline.yaml   # ★ 策略回归门禁（越权漏放则退出码非零）
+agentguard scan  logs/agent_actions.jsonl          # 离线审计已有动作日志
+```
+
+- 完整接入指南（含 OpenAI function calling / LangChain / MCP 三种接法）：[`docs/SDK.md`](docs/SDK.md)
+- 可运行的对照示例：`python examples/quickstart.py`
+- 产品化形态（外部网关，做到不可绕过）：[`docs/PRODUCT.md`](docs/PRODUCT.md)
+
+---
+
 ## 二、要解决的问题（不是"大模型越狱"）
 
 AI Agent 被广泛用于安全运维、漏洞挖掘、代码审计。风险在于 **Agent 的边界逃逸**：

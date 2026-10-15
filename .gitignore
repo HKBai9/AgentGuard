@@ -34,6 +34,8 @@ pytest-cache-files-*/
 .pi*/
 .t2/
 .tmp/
+.pytest_work/
+.pytest_tmp/
 
 # ---- 编辑器 ----
 .vscode/

@@ -21,9 +21,12 @@ from __future__ import annotations
 import os
 
 from .baseline import PermissionBaseline, load_baseline
-from .guard import GuardConfig, SandboxGuard
+from .guard import GuardConfig, SandboxGuard, build_guard
 from .intent import IntentChecker
+from .paths import DEFAULT_CONFIG_PATH as DEFAULT_CONFIG
+from .paths import PROJECT_ROOT, VFS_ROOT
 from .runtime import RuntimeMonitor
+from .sdk import AgentGuard, GuardedToolError, ToolSpec, guard_function, guard_tool, guard_tools
 from .tools import ToolBridge
 from .types import (
     Decision,
@@ -37,11 +40,15 @@ from .types import (
     Verdict,
 )
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT_CONFIG = os.path.join(PROJECT_ROOT, "config", "permission_baseline.yaml")
-VFS_ROOT = os.path.join(PROJECT_ROOT, "sandbox", "sandbox_fake")
-
 __all__ = [
+    # 开发者 SDK（推荐入口）
+    "AgentGuard",
+    "ToolSpec",
+    "GuardedToolError",
+    "guard_tools",
+    "guard_tool",
+    "guard_function",
+    # 内核
     "PermissionBaseline",
     "load_baseline",
     "GuardConfig",
@@ -64,23 +71,4 @@ __all__ = [
     "build_guard",
 ]
 
-__version__ = "1.0.0"
-
-
-def build_guard(
-    config_path: str | None = None,
-    guard_config: GuardConfig | None = None,
-    llm=None,
-    session_id: str = "",
-) -> SandboxGuard:
-    """按默认路径装配一个可用的防护引擎。"""
-    baseline = load_baseline(config_path or DEFAULT_CONFIG)
-    # 让防护层知道虚拟文件系统的真实根（用于回滚快照）
-    baseline.cfg["_vfs_root"] = VFS_ROOT
-    return SandboxGuard(
-        baseline,
-        config=guard_config or GuardConfig(),
-        llm=llm,
-        session_id=session_id,
-        vfs_real_root=VFS_ROOT,
-    )
+__version__ = "1.1.0"

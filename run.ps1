@@ -8,10 +8,11 @@
 #   .\run.ps1 -Mode ui     跑界面无头冒烟测试
 
 param(
-    [ValidateSet("app", "exp", "live", "test", "ui", "redteam", "bypass")]
+    [ValidateSet("app", "exp", "live", "test", "ui", "redteam", "bypass", "sdk", "gate", "scan")]
     [string]$Mode = "app",
     [int]$Port = 8501,
-    [string]$Model = "qwen2.5-coder:7b"
+    [string]$Model = "qwen2.5-coder:7b",
+    [string]$Log = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -83,6 +84,23 @@ switch ($Mode) {
         }
         Write-Host "[→] 红队测试：提示词层防护能否被绕过（真实大模型，较慢）" -ForegroundColor Cyan
         & $Python (Join-Path $Root "experiments\run_adversarial.py") --model $Model
+    }
+    "sdk" {
+        Write-Host "[→] 开发者接入示例：不接防护 vs 接入防护（只替换工具表）" -ForegroundColor Cyan
+        & $Python (Join-Path $Root "examples\quickstart.py")
+    }
+    "gate" {
+        Write-Host "[→] 策略回归门禁（越权漏放则退出码非零，可放进 CI）" -ForegroundColor Cyan
+        & $Python -m agentguard.cli test (Join-Path $Root "config\permission_baseline.yaml")
+        Write-Host "    退出码 $LASTEXITCODE（0=全部符合预期）" -ForegroundColor DarkGray
+    }
+    "scan" {
+        if (-not $args[0]) {
+            Write-Host "[!] 用法：.\run.ps1 -Mode scan -Log <actions.jsonl>" -ForegroundColor Yellow
+            exit 2
+        }
+        Write-Host "[→] 离线审计 Agent 动作日志" -ForegroundColor Cyan
+        & $Python -m agentguard.cli scan $Log
     }
     "bypass" {
         Write-Host "[→] 对照实验：工具名白名单 vs 资源级防护（工具名白名单会被绕过）" -ForegroundColor Cyan

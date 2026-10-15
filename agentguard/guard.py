@@ -24,8 +24,9 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from .action import ActionView, build_action
-from .baseline import PermissionBaseline
+from .baseline import PermissionBaseline, load_baseline
 from .intent import IntentAssessment, IntentChecker
+from .paths import DEFAULT_CONFIG_PATH, VFS_ROOT
 from .runtime import ActionRecord, RuntimeMonitor
 from .types import (
     Decision,
@@ -462,3 +463,29 @@ class SandboxGuard:
             "action_chain": self.monitor.chain(),
             "rollback": self.rollback_log,
         }
+
+
+# ---------------------------------------------------------------------------
+# 便捷装配函数
+# ---------------------------------------------------------------------------
+def build_guard(
+    config_path: str | None = None,
+    guard_config: GuardConfig | None = None,
+    llm: Any = None,
+    session_id: str = "",
+) -> SandboxGuard:
+    """按默认路径装配一个可用的防护引擎。
+
+    放在本模块（而不是包根的 ``__init__``）是为了避免循环导入：
+    ``sdk`` 需要它，而 ``sdk`` 又被包根导入。
+    """
+    baseline = load_baseline(config_path or DEFAULT_CONFIG_PATH)
+    # 让防护层知道虚拟文件系统的真实根（用于回滚快照）
+    baseline.cfg["_vfs_root"] = VFS_ROOT
+    return SandboxGuard(
+        baseline,
+        config=guard_config or GuardConfig(),
+        llm=llm,
+        session_id=session_id,
+        vfs_real_root=VFS_ROOT,
+    )
