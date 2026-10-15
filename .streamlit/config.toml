@@ -1,0 +1,21 @@
+# Streamlit 配置
+#
+# 说明：本项目把依赖安装在 workspace 内的 `libs/` 目录（非标准 site-packages），
+# Streamlit 据此会误判为"开发模式"，从而禁止显式指定 server.port。
+# 这里显式关闭开发模式，保证服务能在指定端口正常启动。
+[global]
+developmentMode = false
+
+[server]
+port = 8501
+address = "127.0.0.1"
+headless = true
+enableCORS = true
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false
+
+[client]
+showErrorDetails = true
+toolbarMode = "minimal"
