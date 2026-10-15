@@ -50,6 +50,7 @@ agentguard scan  logs/agent_actions.jsonl          # 离线审计已有动作日
 - 完整接入指南（含 OpenAI function calling / LangChain / MCP 三种接法）：[`docs/SDK.md`](docs/SDK.md)
 - 可运行的对照示例：`python examples/quickstart.py`
 - 产品化形态（外部网关，做到不可绕过）：[`docs/PRODUCT.md`](docs/PRODUCT.md)
+- **原理解析（四层机制逐层讲透）**：[`docs/PRINCIPLE.md`](docs/PRINCIPLE.md)
 
 ---
 
@@ -275,15 +276,24 @@ python tools/collect_evidence.py                        # 汇总证据到 experi
 │   ├── guard.py                 L4 隔离阻断 + 四层编排（SandboxGuard）
 │   ├── tools.py                 受管控工具桥（ToolBridge，唯一控制点）
 │   ├── agent.py                 ReAct Agent 循环（与防护解耦）
-│   └── llm.py                   Ollama 本地模型客户端 + 脚本回放
+│   ├── llm.py                   Ollama 本地模型客户端 + 脚本回放
+│   ├── sdk.py                   ★ 开发者 SDK（AgentGuard / wrap_tools / 适配器）
+│   ├── cli.py                   ★ 命令行工具（check / test / scan）
+│   └── paths.py                 路径常量（避免循环导入）
 ├── config/permission_baseline.yaml   权限基线（Agent 的最小权限边界）
 ├── sandbox/
 │   ├── servers.py               靶站 + 模拟内网服务（全部本机回环）
 │   └── sandbox_fake/            沙箱文件系统（含**演示用假**私钥/凭证）
-├── experiments/run_experiment.py     对照实验运行器
-├── tests/test_guard.py          防护层判定矩阵回归测试（34 项）
-├── docs/                        设计文档 / 可复现实验报告 / 申报书素材
-└── tools/                       依赖引导、UI 冒烟测试等工程脚本
+├── experiments/
+│   ├── run_experiment.py        三组对照实验（裸Agent / 提示词防护 / 执行层）
+│   ├── run_adversarial.py       红队：提示词防护能否被绕过
+│   └── run_bypass_demo.py       绕过对照：工具名白名单 vs 资源级判定
+├── examples/quickstart.py       开发者接入示例（不接防护 vs 接入防护）
+├── tests/
+│   ├── test_guard.py            防护层判定矩阵（34 项）
+│   └── test_sdk.py              SDK / CLI 接口测试（21 项）
+├── docs/                        原理解析 / 设计 / 证据 / 接入指南 / 产品化 / 申报书素材
+└── tools/                       依赖引导、启动脚本、UI 冒烟测试等工程脚本
 ```
 
 ---
