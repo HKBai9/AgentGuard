@@ -29,8 +29,9 @@ import functools
 import inspect
 import json
 import os
+import uuid
 from dataclasses import dataclass, field
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping, get_type_hints
 
 # 注意：这里**必须**从子模块直接导入，不能 `from . import ...`。
 # sdk 会被包根的 __init__ 导入，若再从包根取符号就会形成循环导入。
@@ -104,13 +105,17 @@ def _infer_parameters(func: Callable[..., Any]) -> dict[str, Any]:
     props: dict[str, Any] = {}
     required: list[str] = []
     type_map = {str: "string", int: "integer", float: "number", bool: "boolean"}
+    try:
+        hints = get_type_hints(func)
+    except (NameError, TypeError):
+        hints = {}
     for pname, param in sig.parameters.items():
         if pname in ("self", "cls") or param.kind in (
             inspect.Parameter.VAR_POSITIONAL,
             inspect.Parameter.VAR_KEYWORD,
         ):
             continue
-        props[pname] = {"type": type_map.get(param.annotation, "string")}
+        props[pname] = {"type": type_map.get(hints.get(pname, param.annotation), "string")}
         if param.default is inspect.Parameter.empty:
             required.append(pname)
     return {"type": "object", "properties": props, "required": required}
@@ -134,7 +139,14 @@ def coerce_tool(obj: Any, name: str | None = None) -> ToolSpec:
     - 带 ``.name`` 与 ``.invoke`` / ``.run`` 的自定义工具对象。
     """
     if isinstance(obj, ToolSpec):
+        if name is not None and name != obj.name:
+            raise TypeError("工具字典名称与 ToolSpec.name 不一致")
         return obj
+    wrapped_spec = getattr(obj, "__agentguard_spec__", None)
+    if isinstance(wrapped_spec, ToolSpec):
+        if name is not None and name != wrapped_spec.name:
+            raise TypeError("不能通过改名复用另一个工具的防护描述")
+        return wrapped_spec
 
     tname = name or getattr(obj, "name", None) or getattr(obj, "__name__", None)
     if not tname:
@@ -154,7 +166,7 @@ def coerce_tool(obj: Any, name: str | None = None) -> ToolSpec:
         return ToolSpec(str(tname), desc, obj, _infer_parameters(obj))
 
     # --- 2) LangChain 风格：显式的执行函数 ---
-    for attr in ("func", "_run"):
+    for attr in ("func", "coroutine", "_run"):
         fn = getattr(obj, attr, None)
         if callable(fn):
             params = _langchain_schema(obj) or _infer_parameters(fn)
@@ -165,7 +177,15 @@ def coerce_tool(obj: Any, name: str | None = None) -> ToolSpec:
         fn = getattr(obj, attr, None)
         if callable(fn):
             params = _langchain_schema(obj) or _infer_parameters(fn)
-            return ToolSpec(str(tname), desc, fn, params)
+            if attr == "run":
+                return ToolSpec(str(tname), desc, fn, params)
+            if inspect.iscoroutinefunction(fn):
+                async def invoke_async(**kwargs):
+                    return await fn(kwargs)
+                return ToolSpec(str(tname), desc, invoke_async, params)
+            def invoke_sync(**kwargs):
+                return fn(kwargs)
+            return ToolSpec(str(tname), desc, invoke_sync, params)
 
     raise TypeError(f"无法把 {obj!r} 识别为工具，请用 ToolSpec(name, description, func) 包装")
 
@@ -175,6 +195,8 @@ def _langchain_schema(obj: Any) -> dict[str, Any] | None:
     schema = getattr(obj, "args_schema", None)
     if schema is None:
         return None
+    if isinstance(schema, dict):
+        return schema
     for attr in ("model_json_schema", "schema"):
         fn = getattr(schema, attr, None)
         if callable(fn):
@@ -250,13 +272,13 @@ class AgentGuard:
             config_path=self.policy_path,
             guard_config=cfg,
             llm=llm,
-            session_id=session_id or "sdk",
+            session_id=session_id or f"sdk-{uuid.uuid4().hex[:12]}",
+            task=task,
+            vfs_root=vfs_root,
         )
         if self.audit_log:
             self._guard.audit_path = self.audit_log
         # 策略里的可写目录用于回滚快照；SDK 模式下允许调用方指定 vfs_root
-        if vfs_root:
-            self._guard.vfs_root = vfs_root
         self._step = 0
 
     # ---------------------------------------------------------------- 属性
@@ -273,10 +295,76 @@ class AgentGuard:
     # ------------------------------------------------------- 核心拦截原语
     def check(self, tool: str, args: dict[str, Any] | None = None, thought: str = "") -> Verdict:
         """只做判定、不执行。用于"先问一句能不能做"的场景。"""
-        self._step += 1
-        call = ToolCall(tool=tool, args=args or {}, thought=thought, step=self._step)
-        verdict, _view = self._guard.evaluate(call)
+        _call, verdict = self._evaluate(tool, args, thought)
         return verdict
+
+    def _evaluate(self, tool, args, thought):
+        self._step += 1
+        call = ToolCall(tool=tool, args=dict(args or {}), thought=thought, step=self._step)
+        verdict, _view = self._guard.evaluate(call)
+        return call, verdict
+
+    @staticmethod
+    def _bound_call(func, args, kwargs):
+        try:
+            signature = inspect.signature(func)
+            bound = signature.bind(*args, **kwargs)
+            bound.apply_defaults()
+        except (TypeError, ValueError) as exc:
+            raise TypeError(f"工具参数不匹配，无法完整检查：{exc}") from exc
+        inspected = {}
+        for name, value in bound.arguments.items():
+            kind = signature.parameters[name].kind
+            if kind is inspect.Parameter.VAR_KEYWORD:
+                inspected.update(value)
+            elif kind is inspect.Parameter.VAR_POSITIONAL:
+                if value:
+                    raise TypeError("工具参数不匹配：请为位置参数提供具名适配器")
+            else:
+                inspected[name] = value
+        return bound, inspected
+
+    def _outcome(self, call, value=None, error=None):
+        if isinstance(value, ToolResult):
+            result = value
+            result.executed = True
+        else:
+            result = ToolResult(error is None, str(value) if error is None else str(error), executed=True,
+                                meta={"effects_complete": False})
+        # Plain callbacks expose completion, not proof of their file/network effects.
+        self._guard.record_result(call, result)
+
+    def _invoke(self, tool, func, args, kwargs, thought=""):
+        bound, inspected = self._bound_call(func, args, kwargs)
+        call, verdict = self._evaluate(tool, inspected, thought)
+        if not verdict.allowed:
+            return False, self._blocked_payload(tool, verdict)
+        try:
+            value = func(*bound.args, **bound.kwargs)
+            if inspect.isawaitable(value):
+                if inspect.iscoroutine(value):
+                    value.close()
+                raise TypeError("异步工具请使用 await aguard_call 或异步包装器")
+        except BaseException as exc:
+            self._outcome(call, error=exc)
+            raise
+        self._outcome(call, value=value)
+        return True, value
+
+    async def _ainvoke(self, tool, func, args, kwargs, thought=""):
+        bound, inspected = self._bound_call(func, args, kwargs)
+        call, verdict = self._evaluate(tool, inspected, thought)
+        if not verdict.allowed:
+            return False, self._blocked_payload(tool, verdict)
+        try:
+            value = func(*bound.args, **bound.kwargs)
+            if inspect.isawaitable(value):
+                value = await value
+        except BaseException as exc:
+            self._outcome(call, error=exc)
+            raise
+        self._outcome(call, value=value)
+        return True, value
 
     def guard_call(
         self,
@@ -290,26 +378,11 @@ class AgentGuard:
         返回 ``(allowed, result)``。**这是全 SDK 的核心原语**——
         `wrap_tools` / `tool` / `wrap_openai_tools` 都建在它之上。
         """
-        verdict = self.check(tool, args, thought)
-        if not verdict.allowed:
-            return False, self._blocked_payload(tool, verdict)
+        return self._invoke(tool, func, (), dict(args or {}), thought)
 
-        # 允许执行。参数以"具名"形式传入（bind_args 的产物）。
-        call_args = dict(args or {})
-        positional = call_args.pop("_args", None)
-        try:
-            if positional:
-                return True, func(*positional, **call_args)
-            return True, func(**call_args)
-        except TypeError as exc:
-            # 参数绑不上（多半是工具的签名与框架传来的参数不一致）。
-            # 这是**调用方契约问题**，不能静默吞掉 —— 否则看起来像"被拦住了"，
-            # 实际是防护根本没工作（曾经因此产生过一次假阳性实验结论）。
-            raise TypeError(
-                f"调用工具 `{tool}` 时参数不匹配：{exc}。"
-                f"收到的参数：{sorted((args or {}).keys())}。"
-                f"请检查工具签名，或用 ToolSpec 显式描述参数。"
-            ) from exc
+    async def aguard_call(self, tool, func, args=None, thought=""):
+        """Async counterpart; execution is recorded only after awaiting completion."""
+        return await self._ainvoke(tool, func, (), dict(args or {}), thought)
 
     def _blocked_payload(self, tool: str, verdict: Verdict) -> Any:
         if self.on_block == "raise":
@@ -357,23 +430,21 @@ class AgentGuard:
 
         @functools.wraps(original)
         def protected(*args: Any, **kwargs: Any) -> Any:
-            call_args = self._bind_args(original, args, kwargs)
-            ok, out = self.guard_call(spec.name, original, call_args, thought=thought)
-            if ok:
-                return out
+            _ok, out = self._invoke(spec.name, original, args, kwargs, thought)
             return out
-
-        return ToolSpec(spec.name, spec.description, protected, spec.parameters)
+        @functools.wraps(original)
+        async def aprotected(*args, **kwargs):
+            _ok, out = await self._ainvoke(spec.name, original, args, kwargs, thought)
+            return out
+        wrapped = aprotected if inspect.iscoroutinefunction(original) else protected
+        result = ToolSpec(spec.name, spec.description, wrapped, spec.parameters)
+        setattr(wrapped, "__agentguard_spec__", result)
+        return result
 
     @staticmethod
     def _bind_args(func: Callable[..., Any], args: tuple, kwargs: dict) -> dict[str, Any]:
         """把位置参数绑成字典，这样防护层能看到**具名的**参数。"""
-        try:
-            bound = inspect.signature(func).bind_partial(*args, **kwargs)
-            return dict(bound.arguments)
-        except (TypeError, ValueError):
-            # 绑不上就退化为位置参数列表，防护层仍会尝试审计
-            return {"_args": list(args), **kwargs}
+        return AgentGuard._bound_call(func, args, kwargs)[1]
 
     def tool(self, name: str, description: str = "", parameters: dict[str, Any] | None = None):
         """装饰器：把一个函数注册为受防护的工具。
@@ -390,18 +461,18 @@ class AgentGuard:
                 parameters=parameters or _infer_parameters(func),
             )
             protected = self._wrap_spec(spec, thought="").func
-            setattr(protected, "__agentguard_spec__", spec)
             return protected
 
         return deco
 
     # -------------------------------------------------- 各框架适配器（薄封装）
-    def openai_tools(self, specs: Iterable[ToolSpec]) -> list[dict[str, Any]]:
+    def openai_tools(self, specs: Any) -> list[dict[str, Any]]:
         """导出 OpenAI / 兼容接口的 function calling 工具定义。
 
             tools = guard.openai_tools(guard.wrap_tools(my_tools))
         """
-        return [s.schema for s in specs]
+        normalized = _normalize_tools(specs)
+        return [{"type": "function", "function": s.schema} for s in normalized]
 
     def langchain_tools(self, specs: Iterable[ToolSpec]) -> list[Any]:
         """导出 LangChain ``StructuredTool``（未安装 langchain 时抛 ImportError）。"""
@@ -413,10 +484,12 @@ class AgentGuard:
                 "或直接用 wrap_tools 返回的字典（框架无关）。"
             ) from exc
         out = []
-        for s in specs:
+        for s in _normalize_tools(specs):
             out.append(
                 StructuredTool.from_function(
-                    func=s.func, name=s.name, description=s.description
+                    func=None if inspect.iscoroutinefunction(s.func) else s.func,
+                    coroutine=s.func if inspect.iscoroutinefunction(s.func) else None,
+                    name=s.name, description=s.description, args_schema=s.parameters or None
                 )
             )
         return out

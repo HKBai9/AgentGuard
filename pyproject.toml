@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentguard"
-version = "1.1.0"
+version = "1.1.1"
 description = "AI Agent 工具调用安全防护：边界逃逸检测与风险隔离（四层策略引擎，框架无关）"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -23,9 +23,8 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
-# 运行时**零第三方依赖**：判定引擎只用标准库。
-# PyYAML 仅在读取策略文件时需要，未安装时可用内置的极简解析回退。
-dependencies = []
+# 策略加载必需 PyYAML；没有静默解析回退。
+dependencies = ["PyYAML>=6.0"]
 
 [project.optional-dependencies]
 # 读取 YAML 策略（推荐装上）
@@ -34,6 +33,7 @@ yaml = ["PyYAML>=6.0"]
 demo = ["streamlit>=1.30", "PyYAML>=6.0"]
 # 开发/测试
 dev = ["pytest>=8.0", "PyYAML>=6.0"]
+langchain = ["langchain-core"]
 
 [project.scripts]
 agentguard = "agentguard.cli:main"
@@ -47,7 +47,7 @@ Issues = "https://github.com/HKBai9/AgentGuard/issues"
 packages = ["agentguard"]
 
 [tool.setuptools.package-data]
-agentguard = ["py.typed"]
+agentguard = ["data/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

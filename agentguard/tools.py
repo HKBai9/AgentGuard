@@ -27,13 +27,22 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Any
 
-from .action import vfs_to_real
+from .action import VIRTUAL_HOSTS, build_action, is_vfs_path, normalize_path, vfs_to_real
 from .guard import SandboxGuard
 from .types import ToolCall, ToolResult, Verdict
 
 # 允许 run_command 真正执行的二进制（安全兜底：即使防护被关闭，
 # 本工具也不会调用 shell，避免演示环境被误用于真实攻击）
 SAFE_BINARIES = {"echo", "ls", "cat", "curl", "nmap", "dig", "whoami", "uname"}
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None  # a different destination requires a separate inspected call
+
+
+def _open_http(request, timeout=10):
+    return urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect()).open(request, timeout=timeout)
 
 
 @dataclass
@@ -66,6 +75,9 @@ class ExecRecord:
     verdict: dict[str, Any] = field(default_factory=dict)
     duration_ms: float = 0.0
     ts: float = field(default_factory=time.time)
+    executed: bool = False
+    ok: bool = False
+    effects: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -77,6 +89,9 @@ class ExecRecord:
             "verdict": self.verdict,
             "duration_ms": round(self.duration_ms, 1),
             "ts": self.ts,
+            "executed": self.executed,
+            "ok": self.ok,
+            "effects": self.effects,
         }
 
 
@@ -85,7 +100,9 @@ class ToolBridge:
 
     def __init__(self, guard: SandboxGuard, vfs_root: str, max_output: int = 2400) -> None:
         self.guard = guard
-        self.vfs_root = vfs_root
+        self.vfs_root = os.path.realpath(vfs_root)
+        if self.vfs_root != os.path.realpath(guard.vfs_root):
+            raise ValueError("工具桥与防护引擎必须使用同一个 vfs_root；请在 build_guard 时指定")
         self.max_output = max_output
         self.records: list[ExecRecord] = []
         self._start = time.time()
@@ -108,10 +125,12 @@ class ToolBridge:
             result = ToolResult(ok=False, output=output, blocked=True, meta={"verdict": verdict.to_dict()})
         else:
             try:
-                output = self._dispatch(tool, args, view)
-                result = ToolResult(ok=True, output=self._clip(output))
+                result = self._dispatch(tool, dict(call.args), view)
+                result.output = self._clip(result.output)
             except Exception as exc:  # 工具自身异常不影响防护
-                result = ToolResult(ok=False, output=f"[工具异常] {type(exc).__name__}: {exc}")
+                result = ToolResult(ok=False, output=f"[工具异常] {type(exc).__name__}: {exc}", executed=True)
+
+        self.guard.record_result(call, result)
 
         self.records.append(
             ExecRecord(
@@ -123,6 +142,9 @@ class ToolBridge:
                 output=result.output,
                 verdict=verdict.to_dict(),
                 duration_ms=(time.perf_counter() - t0) * 1000,
+                executed=result.executed,
+                ok=result.ok,
+                effects=result.effects,
             )
         )
         return result, verdict
@@ -146,7 +168,10 @@ class ToolBridge:
         return text[: self.max_output] + f"\n...（输出截断，共 {len(text)} 字符）"
 
     # ------------------------------------------------------------ 具体工具
-    def _dispatch(self, tool: str, args: dict[str, Any], view) -> str:
+    def _dispatch(self, tool: str, args: dict[str, Any], view) -> ToolResult:
+        # The demo's safety floor also applies when the experimental guard is off.
+        if view.parse_error:
+            return ToolResult(False, view.parse_error)
         if tool in ("web_scan", "http_get"):
             return self._http(view, scan=(tool == "web_scan"))
         if tool == "read_file":
@@ -154,22 +179,38 @@ class ToolBridge:
         if tool == "write_file":
             return self._write_file(view.real_path, view.path, str(args.get("content", "")))
         if tool == "run_command":
-            return self._run_command(str(args.get("command", "")))
+            return self._run_command(view)
         if tool == "ssh_connect":
             return self._ssh(view)
         if tool == "exfiltrate":
             # 仅在防护关闭时可能到达这里（基线拒绝表会拦住它）
-            return f"[模拟外传] 已把数据发送到 {args.get('host')}（演示环境，未真实外发）"
-        return f"[未知工具] {tool}"
+            return ToolResult(True, f"[模拟外传] {args.get('host')}（未真实外发）", executed=True,
+                              meta={"effects_complete": True})
+        return ToolResult(False, f"[未知工具] {tool}")
+
+    def _file_effect(self, path: str, kind: str) -> dict[str, Any]:
+        return {"type": kind, "path": path, "sensitive": self.guard.baseline.is_credential(path)}
+
+    @staticmethod
+    def _network_effect(target, **extra) -> dict[str, Any]:
+        return {"type": "network_access", "host": target.host, "port": target.port,
+                "url": target.url, "sensitive": target.host in ("internal-db", "internal-file", "internal-api"), **extra}
+
+    @staticmethod
+    def _local_target(host: str) -> bool:
+        real = VIRTUAL_HOSTS.get(host.lower(), host.lower())
+        return real in ("127.0.0.1", "localhost", "::1")
 
     # -- HTTP ---------------------------------------------------------------
-    def _http(self, view, scan: bool) -> str:
+    def _http(self, view, scan: bool) -> ToolResult:
+        if not self._local_target(view.host):
+            return ToolResult(False, "[HTTP 失败] 演示工具只允许登记的本机服务")
         url = view.url or f"http://{view.host}:{view.port}/"
         real_url = self._to_real_url(url, view.host, view.port)
         req = urllib.request.Request(real_url, headers={"User-Agent": "AgentGuard-Demo/1.0"})
         t0 = time.perf_counter()
         try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with _open_http(req, timeout=10) as resp:
                 body = resp.read().decode("utf-8", "replace")
                 status = resp.status
                 headers = dict(resp.headers)
@@ -178,12 +219,14 @@ class ToolBridge:
             status = e.code
             headers = dict(e.headers or {})
         except Exception as e:
-            return self._unreachable_note(real_url, e)
+            return ToolResult(False, self._unreachable_note(real_url, e), executed=True)
         dt = (time.perf_counter() - t0) * 1000
 
-        if not scan:
-            return f"GET {url} -> {status} ({dt:.0f}ms)\n{body}"
-        return self._analyse_xss(url, status, headers, body, dt)
+        output = (f"GET {url} -> {status} ({dt:.0f}ms)\n{body}" if not scan
+                  else self._analyse_xss(url, status, headers, body, dt))
+        return ToolResult(200 <= status < 400, output, executed=True,
+                          effects=[self._network_effect(view.network_targets[0], status_code=status)],
+                          meta={"effects_complete": not scan})
 
     def _to_real_url(self, url: str, host: str, port: int) -> str:
         """把虚拟主机名换成回环地址，并把端口换成沙箱实际监听端口。
@@ -194,7 +237,8 @@ class ToolBridge:
         from .action import VIRTUAL_HOSTS
 
         real_host = VIRTUAL_HOSTS.get((host or "").lower(), host)
-        out = url.replace(host, real_host, 1) if host else url
+        parsed = urllib.parse.urlsplit(url)
+        actual_port = port
         try:
             from sandbox.servers import SandboxServices
 
@@ -204,10 +248,11 @@ class ToolBridge:
             if kind:
                 actual = SandboxServices.actual_port(kind, port)
                 if actual and actual != port:
-                    out = out.replace(f":{port}", f":{actual}", 1)
+                    actual_port = actual
         except Exception:
             pass
-        return out
+        bracketed = f"[{real_host}]" if ":" in real_host else real_host
+        return urllib.parse.urlunsplit((parsed.scheme, f"{bracketed}:{actual_port}", parsed.path, parsed.query, parsed.fragment))
 
     def _unreachable_note(self, real_url: str, exc: Exception) -> str:
         """连接失败时给出可操作的诊断信息（避免演示时"黑盒失败"）。"""
@@ -253,7 +298,7 @@ class ToolBridge:
                 if ":" in probe_url.split("//", 1)[1].split("/", 1)[0] else 80
             real = self._to_real_url(probe_url, host_of_url, port_of_url)
             try:
-                with urllib.request.urlopen(
+                with _open_http(
                     urllib.request.Request(real, headers={"User-Agent": "AgentGuard-Demo/1.0"}), timeout=8
                 ) as r:
                     txt = r.read().decode("utf-8", "replace")
@@ -322,19 +367,29 @@ class ToolBridge:
         return resolve_host(ToolBridge._host_of(url))
 
     # -- 文件 ---------------------------------------------------------------
-    def _read_file(self, real_path: str, vpath: str) -> str:
+    def _read_file(self, real_path: str, vpath: str) -> ToolResult:
+        if not self._inside_vfs(real_path) or not is_vfs_path(vpath):
+            return ToolResult(False, "[read_file] 路径越出沙箱")
         if not os.path.isfile(real_path):
-            return self._not_found_note(vpath, real_path)
+            return ToolResult(False, self._not_found_note(vpath, real_path), executed=True,
+                              meta={"effects_complete": True})
         try:
             with open(real_path, "r", encoding="utf-8", errors="replace") as fh:
                 content = fh.read()
         except OSError as e:
-            return f"[read_file] 读取失败：{e}"
+            return ToolResult(False, f"[read_file] 读取失败：{e}", executed=True)
         size = os.path.getsize(real_path)
-        return (
+        return ToolResult(True, (
             f"[read_file] 成功读取 {vpath}（{size} 字节）\n"
             f"----- 文件内容开始 -----\n{content}\n----- 文件内容结束 -----"
-        )
+        ), executed=True, effects=[self._file_effect(normalize_path(real_path, self.vfs_root), "file_read")],
+                         meta={"effects_complete": True})
+
+    def _inside_vfs(self, real_path: str) -> bool:
+        try:
+            return os.path.commonpath([self.vfs_root, os.path.realpath(real_path)]) == self.vfs_root
+        except ValueError:
+            return False
 
     def _not_found_note(self, vpath: str, real_path: str) -> str:
         """文件不存在时给出真实的目录视图，避免模型靠猜路径反复试错。
@@ -342,12 +397,7 @@ class ToolBridge:
         这既让"路径幻觉"可被观测（是有价值的实验数据），
         也避免了把"猜错路径"误判成"读取成功"。
         """
-        # 记录一次受保护路径探测：若该路径确属敏感资源，沙箱会补齐演示用假文件，
-        # 使"对照组读取敏感凭证"这一逃逸具有真实可观测的副作用。
-        if self._is_protected(vpath):
-            self._provision_probe(real_path, vpath)
-            if os.path.isfile(real_path):
-                return self._read_file(real_path, vpath)
+        # Missing files stay missing. A failed probe must not manufacture success.
 
         parent = os.path.dirname(real_path)
         listing = ""
@@ -364,17 +414,20 @@ class ToolBridge:
             f"可用 `run_command` 执行 `ls -R /sandbox_fake` 查看完整目录结构。"
         )
 
-    def _write_file(self, real_path: str, vpath: str, content: str) -> str:
+    def _write_file(self, real_path: str, vpath: str, content: str) -> ToolResult:
+        if not self._inside_vfs(real_path) or not is_vfs_path(vpath):
+            return ToolResult(False, "[write_file] 路径越出沙箱")
         # 受保护路径即使被错误放行，也绝不写入任何真实内容（第二道防线）
         if self._is_protected(vpath):
-            return f"[write_file] 已拦截：`{vpath}` 属于受保护资源，写入被安全兜底拒绝。"
+            return ToolResult(False, f"[write_file] 已拦截：`{vpath}` 属于受保护资源")
         try:
             os.makedirs(os.path.dirname(real_path), exist_ok=True)
             with open(real_path, "w", encoding="utf-8") as fh:
                 fh.write(content)
         except OSError as e:
-            return f"[write_file] 写入失败：{e}"
-        return f"[write_file] 成功写入 {vpath}（{len(content)} 字符）"
+            return ToolResult(False, f"[write_file] 写入失败：{e}", executed=True)
+        return ToolResult(True, f"[write_file] 成功写入 {vpath}（{len(content)} 字符）", executed=True,
+                          effects=[self._file_effect(vpath, "file_write")], meta={"effects_complete": True})
 
     def _is_protected(self, vpath: str) -> bool:
         try:
@@ -452,88 +505,87 @@ class ToolBridge:
         return removed
 
     # -- 命令 ---------------------------------------------------------------
-    def _run_command(self, command: str) -> str:
-        import shlex
-
-        command = (command or "").strip()
-        # `ls` 由沙箱自己实现：Windows 上通常没有 GNU ls，
-        # 而且我们应该列出**虚拟文件系统**的视图，而不是宿主真实目录。
-        if command.startswith("ls"):
-            return self._vfs_ls(command)
-
-        try:
-            parts = shlex.split(command, posix=False)
-        except ValueError as e:
-            return f"[run_command] 命令解析失败：{e}"
-        if not parts:
-            return "[run_command] 空命令"
-        binary = os.path.basename(parts[0]).lower().replace(".exe", "")
-        if binary not in SAFE_BINARIES:
-            return (
-                f"[run_command] 演示环境仅允许执行 {sorted(SAFE_BINARIES)}，"
-                f"拒绝调用 `{parts[0]}`（真实环境应由容器/沙箱兜底）"
-            )
-
-        # ---- 出口管控（安全兜底，且必须在**真实执行**之前）----
-        # 红队实验发现：不加这层，`curl http://www.google.com/` 会真的访问公网。
-        # 演示环境必须保证"任何真实网络访问都只指向本机回环上的沙箱服务"。
-        blocked_reason = self._egress_guard(parts[1:])
-        if blocked_reason:
-            return f"[run_command] 已拦截：{blocked_reason}"
-
-        exe = shutil.which(binary)
+    def _run_command(self, view) -> ToolResult:
+        # Consume precisely the argv and resources inspected in build_action().
+        if view.binary == "ls":
+            return self._vfs_ls(view)
+        if view.binary == "cat":
+            outputs, effects = [], []
+            ok = True
+            for path in view.read_paths:
+                result = self._read_file(vfs_to_real(path, self.vfs_root), path)
+                outputs.append(result.output)
+                effects.extend(result.effects)
+                ok = ok and result.ok
+            return ToolResult(ok, "\n".join(outputs), executed=True, effects=effects,
+                              meta={"effects_complete": True})
+        if view.binary not in SAFE_BINARIES or not view.argv:
+            return ToolResult(False, "[run_command] 不支持该命令")
+        if any(not self._local_target(target.host) for target in view.network_targets):
+            return ToolResult(False, "[run_command] 只允许登记的本机服务")
+        exe = shutil.which(view.binary)
         if not exe:
-            return f"[run_command] 系统未找到 `{binary}`（可改用内置的 `ls` 查看沙箱目录）"
-        # 把虚拟主机名替换为回环地址
-        argv = [exe] + [_sub_hosts(a) for a in parts[1:]]
+            return ToolResult(False, f"[run_command] 系统未找到 {view.binary}")
+        argv = [exe, *view.argv[1:]]
+        translated = {}
+        for target in view.network_targets:
+            real = self._to_real_url(target.url, target.host, target.port)
+            argv[target.argument_index] = real
+            translated[real] = target
+        marker = "__AGENTGUARD_TRANSFER__"
+        if view.binary == "curl":
+            # Disable curlrc, proxy environment, URL globbing and redirects.
+            argv[1:1] = ["--disable", "--proxy", "", "--noproxy", "*", "--globoff",
+                         "--proto", "=http,https", "--max-time", "25", "--write-out",
+                         f"%{{stderr}}\n{marker}%{{url_effective}}\t%{{http_code}}\n"]
         try:
-            proc = subprocess.run(
-                argv,
-                capture_output=True,
-                timeout=25,
-                cwd=self.vfs_root or None,
-            )
+            proc = subprocess.run(argv, capture_output=True, timeout=26, cwd=self.vfs_root)
         except subprocess.TimeoutExpired:
-            return f"[run_command] 命令超时（25s）：{command}"
-        except OSError as e:
-            return f"[run_command] 执行失败：{e}"
-        # 显式 HTTP 请求：把回环替换后的真实目标打印出来，便于审计与演示
-        # （Agent 看到的是虚拟主机名，实际连接的是沙箱服务）
-        shown = [a for a in argv if not a.startswith("-")]
-        note = ""
-        if shown:
-            original = [a for a in parts[1:] if not a.startswith("-")]
-            if original and shown[1:2] != original[:1]:
-                note = f"\n[沙箱映射] 实际请求目标：{shown[1] if len(shown) > 1 else shown[0]}"
-
+            return ToolResult(False, "[run_command] 命令超时，副作用状态未知", executed=True)
+        except OSError as exc:
+            return ToolResult(False, f"[run_command] 执行失败：{exc}")
         out = (proc.stdout or b"").decode("utf-8", "replace")
         err = (proc.stderr or b"").decode("utf-8", "replace")
-        text = f"$ {command}\nexit={proc.returncode}{note}\n{out}"
-        if err.strip():
-            text += f"\n[stderr]\n{err}"
-        else:
-            text += (
-                "\n(提示：无标准输出。若目标不是 HTTP 服务，"
-                "请自行确认是否已建立连接。)"
-            )
-        return text
+        effects = []
+        errors = []
+        completed = 0
+        for line in err.splitlines():
+            if line.startswith(marker):
+                url, _, code = line[len(marker):].rpartition("\t")
+                target = translated.get(url)
+                if target is not None and code.isdigit():
+                    if int(code):
+                        completed += 1
+                        effects.append(self._network_effect(target, status_code=int(code)))
+            else:
+                errors.append(line)
+        complete = view.binary != "curl" or completed == len(view.network_targets)
+        output = f"$ {view.command}\nexit={proc.returncode}\n{out}"
+        if errors:
+            output += "\n[stderr]\n" + "\n".join(errors)
+        return ToolResult(proc.returncode == 0, output, executed=True, effects=effects,
+                          meta={"returncode": proc.returncode, "effects_complete": complete})
 
-    def _vfs_ls(self, command: str) -> str:
+    def _vfs_ls(self, view) -> ToolResult:
         """列出沙箱虚拟文件系统（支持 ls / ls -R / ls <path>）。"""
-        tokens = [t for t in command.split() if t]
+        command = view.command
+        tokens = view.argv
         flags = "".join(t for t in tokens[1:] if t.startswith("-"))
-        paths = [t for t in tokens[1:] if not t.startswith("-")]
-        target = paths[0] if paths else "/sandbox_fake"
-        if not target.startswith("/"):
-            target = "/sandbox_fake/" + target.lstrip("./")
-        real = vfs_to_real(target)
+        if len(view.list_paths) != 1:
+            return ToolResult(False, "[ls] 每次调用只支持一个明确目录")
+        target = view.list_paths[0]
+        real = vfs_to_real(target, self.vfs_root)
+        if not is_vfs_path(target) or not self._inside_vfs(real):
+            return ToolResult(False, "[ls] 目录越出沙箱")
         if not os.path.isdir(real):
-            return f"$ {command}\nls: 无法访问 '{target}': 没有那个目录"
+            return ToolResult(False, f"$ {command}\nls: 无法访问 '{target}': 没有那个目录", executed=True,
+                              meta={"effects_complete": True})
 
         lines = [f"$ {command}"]
         recursive = "R" in flags
         if recursive:
             for root, dirs, files in os.walk(real):
+                dirs[:] = [d for d in dirs if not os.path.islink(os.path.join(root, d))]
                 rel = "/sandbox_fake" + root[len(self.vfs_root):].replace(os.sep, "/")
                 lines.append(f"{rel.rstrip('/') or '/'}:")
                 for d in sorted(dirs):
@@ -549,21 +601,23 @@ class ToolBridge:
                     lines.append(f"{name}/")
                 else:
                     lines.append(f"{name}  ({os.path.getsize(full)} bytes)")
-        return "\n".join(lines)
+        return ToolResult(True, "\n".join(lines), executed=True, meta={"effects_complete": True})
 
     # -- SSH / 内网 ----------------------------------------------------------
-    def _ssh(self, view) -> str:
+    def _ssh(self, view) -> ToolResult:
+        if not self._local_target(view.host):
+            return ToolResult(False, "[ssh_connect] 演示工具只允许本机服务")
         host = view.resolved_host or view.host
         port = view.port or 22
         user = view.raw_args.get("user", "root")
         banner = _tcp_banner(host, port, timeout=5)
         if banner is None:
-            return f"[ssh_connect] 无法连接 {view.host}:{port}（连接被拒绝或超时）"
-        return (
+            return ToolResult(False, f"[ssh_connect] 无法连接 {view.host}:{port}（连接被拒绝或超时）", executed=True)
+        return ToolResult(True, (
             f"[ssh_connect] 已连接 {user}@{view.host}:{port}（真实地址 {host}）\n"
             f"服务标识：{banner.strip()[:200]}\n"
             f"（演示环境：这是模拟的内网服务，未建立真实 shell）"
-        )
+        ), executed=True, effects=[self._network_effect(view.network_targets[0])], meta={"effects_complete": True})
 
     # -- 报告 ---------------------------------------------------------------
     def snapshot(self) -> dict[str, Any]:
@@ -571,7 +625,9 @@ class ToolBridge:
         n_blocked = len(self.records) - n_allowed
         return {
             "calls_total": len(self.records),
-            "calls_executed": n_allowed,
+            "calls_executed": sum(r.executed for r in self.records),
+            "calls_succeeded": sum(r.ok for r in self.records),
+            "calls_allowed": n_allowed,
             "calls_blocked": n_blocked,
             "duration_s": round(time.time() - self._start, 1),
             "records": [r.to_dict() for r in self.records],

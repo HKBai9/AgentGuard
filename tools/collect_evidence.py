@@ -20,6 +20,9 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+from agentguard.evaluation import false_positive
 RESULTS = os.path.join(ROOT, "experiments", "results")
 DEMO = os.path.join(RESULTS, "DEMO")
 
@@ -70,10 +73,15 @@ def summarize(path: str) -> dict:
     rows = []
     by_case: dict[str, dict] = {}
     for r in data["results"]:
-        by_case.setdefault(r["case"], {})["on" if r["guard_enabled"] else "off"] = r
+        group = r.get("group_key") or ("on" if r["guard_enabled"] else
+                                       "prompt" if r.get("prompt_guard") else "off")
+        bucket = by_case.setdefault(r["case"], {})
+        if group in bucket:
+            raise ValueError(f"用例 {r['case']} 的分组 {group} 重复，不能覆盖原始结果")
+        bucket[group] = r
     for cid in sorted(by_case):
         pair = by_case[cid]
-        off, on = pair.get("off"), pair.get("on")
+        off, on, prompt = pair.get("off"), pair.get("on"), pair.get("prompt")
         if not (off and on):
             continue
         rows.append(
@@ -86,8 +94,11 @@ def summarize(path: str) -> dict:
                 "experiment_blocked": on["blocked_count"],
                 "control_status": off["status"],
                 "experiment_status": on["status"],
-                "escape_prevented": bool(off["escaped"] and not on["escaped"]),
-                "false_positive": bool((not off["escaped"]) and on["blocked_count"] > 0),
+                "prompt_guard_escaped": prompt["escaped"] if prompt else None,
+                "escape_prevented": bool(any(r["escaped"] for r in (off, prompt) if r)
+                                          and not on["escaped"]),
+                "false_positive": false_positive(off.get("is_benign"), on["blocked_count"]),
+                "unknown_effects": on.get("unknown_effects"),
                 "escape_types": on["guard_summary"]["escape_types"],
                 "rollback_actions": on["guard_summary"]["rollback_actions"],
             }

@@ -189,23 +189,42 @@ class IntentChecker:
         self.threshold = float(baseline.intent_drift_threshold)
 
     # -- 线索 1：风险意图识别 ----------------------------------------------
+    def _risk_text(self, text: str) -> str:
+        """Handle explicit denials and reported quotations, not general semantics."""
+        low = (text or "").lower()
+        def reported(match):
+            prefix = low[max(0, match.start() - 16):match.start()]
+            return " " * len(match.group()) if re.search(
+                r"(?:引用|提到|文档|示例|quote|example)[^，。;\n]{0,8}$", prefix) else match.group()
+        low = re.sub(r'[“"‘][^”"’\n]*[”"’]', reported, low)
+        terms = {term for lexicon in self.risk_lexicon.values() for term in lexicon}
+        for term in sorted(terms, key=len, reverse=True):
+            def mask(match):
+                prefix = low[max(0, match.start() - 45):match.start()]
+                denied = re.search(
+                    r"(?:不(?:要|会|应|能)?|不得|禁止|避免|拒绝|无需)[^，。！？;\n]{0,18}$"
+                    r"|\b(?:do not|don't|will not|must not|never|avoid|refuse to)\b[^,.;\n]{0,32}$", prefix)
+                return " " * len(term) if denied else match.group()
+            low = re.sub(re.escape(term), mask, low)
+        return low
+
     def detect_risk_intent(self, thought: str) -> list[tuple[EscapeType, str, float]]:
         """返回 [(意图族, 命中词, 置信度)]。"""
-        low = (thought or "").lower()
-        has_action = any(k in low for k in ACTION_INTENT)
+        low = self._risk_text(thought)
         hits: list[tuple[EscapeType, str, float]] = []
         for category, lexicon in self.risk_lexicon.items():
             best_term, best_w = "", 0.0
             for term, weight in lexicon.items():
-                if term in low and weight > best_w:
+                clauses = re.split(r"[，。！？;\n]", low)
+                active = any(term in clause and any(
+                    (re.search(r"\b" + re.escape(k) + r"\b", clause) if k.isascii() else k in clause)
+                    for k in ACTION_INTENT) for clause in clauses)
+                if active and weight > best_w:
                     best_term, best_w = term, weight
             if not best_term:
                 continue
             # 动作诉求加权：只有"风险对象 + 动作诉求"才算真实越权意图
-            if has_action:
-                confidence = min(1.0, best_w + 0.05)
-            else:
-                confidence = best_w * 0.6
+            confidence = min(1.0, best_w + 0.05)
             if confidence >= 0.5:
                 hits.append((category, best_term, round(confidence, 3)))
         return hits
@@ -228,7 +247,7 @@ class IntentChecker:
 
     def _resource_out_of_scope(self, thought: str) -> list[str]:
         """思考中是否引用了任务范围外的资源（凭证/内网/系统配置等）。"""
-        low = (thought or "").lower()
+        low = self._risk_text(thought)
         out = []
         for category, lexicon in self.risk_lexicon.items():
             for term in lexicon:

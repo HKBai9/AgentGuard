@@ -219,6 +219,7 @@ sequences:
       name: "端口扫描 → 数据库直连"
       severity: HIGH
       read: []
+      before: [web_scan]
       follow: [{ tool: ssh_connect, port_in: [3306, 5432, 6379, 27017] }]
       reason: "探测后直连数据库端口，属于内网渗透行为"
     - id: SEQ-003

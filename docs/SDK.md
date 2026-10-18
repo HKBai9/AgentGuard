@@ -122,7 +122,7 @@ MCP 场景下工具不在你的进程内，两种做法：
 # 做法 A（过渡）：在 MCP 客户端侧包一层
 guard = AgentGuard(task=user_task)
 async def call_tool(name, args):
-    ok, out = guard.guard_call(name, lambda **kw: mcp_client.call_tool(name, kw), args)
+    ok, out = await guard.aguard_call(name, lambda **kw: mcp_client.call_tool(name, kw), args)
     return out
 
 # 做法 B（推荐，产品形态）：把 MCP 服务器地址指向 AgentGuard Gateway
@@ -248,7 +248,8 @@ guard.rollback()  # 把可写目录恢复到会话开始时的快照
 ## 十、常见问题
 
 **Q：Agent 会不会把整个任务搞崩？**
-默认不会。被拦时返回的是说明文本而不是异常，Agent 通常会换个合规路径继续。
+默认返回说明文本而不抛异常；如果策略触发会话冻结，后续工具调用仍会被拒绝。
+返回文本不代表已实现安全续行。上下文隔离与恢复属于后续改造阶段。
 
 **Q：接入要改多少代码？**
 一行（`wrap_tools`）。你的 Agent 循环、模型、框架都不用动。
@@ -280,3 +281,16 @@ python examples/quickstart.py --live   # 用本地大模型真实推理
 
 示例刻意**不使用本仓库的 demo Agent**，而是一个最常见的
 "function-calling 循环 + 普通 Python 函数"写法，用来证明接入是 drop-in 的。
+
+## 十二、1.1.1 接口修正
+
+- 默认参数与具名参数先完整绑定，再检查；执行保留位置专用参数的原始调用约定。
+- `openai_tools()` 接受受保护工具字典或 `ToolSpec` 列表，返回 Chat Completions 的
+  `{"type": "function", "function": ...}` 结构。
+- `async def` 工具经 `wrap_tools()` 后仍须 `await`；直接调用异步函数使用 `await guard.aguard_call(...)`。
+- `task` 在意图检查器初始化前生效。它提供任务参照，不扩展策略中的资源权限。
+- `vfs_root` 在快照前生效；每个 SDK 实例默认使用独立会话编号。
+- 普通自定义回调只能证明“回调已返回”，不会自动证明文件/网络效果。需要已执行行为链时，
+  由可信工具适配器返回 `ToolResult(..., effects=[...], meta={"effects_complete": True})`。
+  不完整效果记录保留为未知，不按“无副作用”处理。
+- 内置命令适配的范围与阶段一验证方法见 [STAGE1.md](STAGE1.md)。

@@ -15,6 +15,9 @@ import urllib.parse
 from dataclasses import dataclass, field
 from typing import Any
 
+from .commands import parse_command
+from .paths import VFS_ROOT
+
 # 演示用的虚拟主机名 -> 真实回环地址。
 # 靶站与模拟内网服务实际运行在本机回环端口上（无外网、无真实内网依赖），
 # 但对 Agent 与防护层而言它们就是独立主机，因此写成虚拟主机名更贴近真实场景。
@@ -38,9 +41,18 @@ SERVICE_ALIASES: dict[str, int] = {
 
 # 沙箱文件系统的虚拟根：/sandbox_fake/** 映射到真实目录
 DEFAULT_VFS_ROOT_MARKER = "/sandbox_fake"
-DEFAULT_VFS_REAL_ROOT = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sandbox", "sandbox_fake"
-)
+DEFAULT_VFS_REAL_ROOT = VFS_ROOT
+
+
+@dataclass
+class NetworkTarget:
+    host: str
+    port: int
+    scheme: str = "http"
+    url: str = ""
+    resolved_host: str = ""
+    policy_port: int = 0
+    argument_index: int = -1
 
 
 @dataclass
@@ -62,6 +74,11 @@ class ActionView:
     # 命令维度
     binary: str = ""
     command: str = ""
+    argv: list[str] = field(default_factory=list)
+    network_targets: list[NetworkTarget] = field(default_factory=list)
+    read_paths: list[str] = field(default_factory=list)
+    list_paths: list[str] = field(default_factory=list)
+    parse_error: str = ""
     # 其它
     notes: list[str] = field(default_factory=list)
 
@@ -75,10 +92,14 @@ class ActionView:
             "binary": self.binary,
             "command": self.command,
             "notes": self.notes,
+            "network_targets": [vars(t) for t in self.network_targets],
+            "read_paths": self.read_paths,
+            "list_paths": self.list_paths,
+            "parse_error": self.parse_error,
         }
 
 
-def normalize_path(path: str) -> str:
+def normalize_path(path: str, vfs_root: str | None = None) -> str:
     """把任意路径写法归一化成虚拟 POSIX 绝对路径。
 
     处理：反斜杠、`..` 上跳、重复斜杠、尾部斜杠、`` file:// `` 前缀。
@@ -90,8 +111,10 @@ def normalize_path(path: str) -> str:
         p = urllib.parse.urlparse(p).path
     p = p.replace("\\", "/")
     # 真实路径若位于 VFS 根之内，换回虚拟路径
-    real_root = DEFAULT_VFS_REAL_ROOT.replace("\\", "/")
-    if p.lower().startswith(real_root.lower()):
+    real_root = os.path.abspath(vfs_root or DEFAULT_VFS_REAL_ROOT).replace("\\", "/")
+    comparable = os.path.normcase(p).replace("\\", "/")
+    comparable_root = os.path.normcase(real_root).replace("\\", "/")
+    if comparable == comparable_root or comparable.startswith(comparable_root + "/"):
         p = DEFAULT_VFS_ROOT_MARKER + p[len(real_root):]
     if not p.startswith("/"):
         p = "/" + p
@@ -102,15 +125,20 @@ def normalize_path(path: str) -> str:
     return p
 
 
-def vfs_to_real(path: str) -> str:
+def is_vfs_path(path: str) -> bool:
+    return path == DEFAULT_VFS_ROOT_MARKER or path.startswith(DEFAULT_VFS_ROOT_MARKER + "/")
+
+
+def vfs_to_real(path: str, vfs_root: str | None = None) -> str:
     """虚拟路径 -> 真实文件系统路径（用于实际执行与回滚快照）。"""
-    v = normalize_path(path)
-    if not v.startswith(DEFAULT_VFS_ROOT_MARKER):
+    root = vfs_root or DEFAULT_VFS_REAL_ROOT
+    v = normalize_path(path, root)
+    if not is_vfs_path(v):
         # 越出沙箱虚拟根的路径，仍给出一个确定性的映射结果，
         # 但防护层会在白名单阶段直接拒绝。
-        return os.path.join(DEFAULT_VFS_REAL_ROOT, v.lstrip("/"))
+        return os.path.join(root, v.lstrip("/"))
     rel = v[len(DEFAULT_VFS_ROOT_MARKER):].lstrip("/")
-    return os.path.normpath(os.path.join(DEFAULT_VFS_REAL_ROOT, rel.replace("/", os.sep)))
+    return os.path.realpath(os.path.join(root, rel.replace("/", os.sep)))
 
 
 def is_ip(value: str) -> bool:
@@ -138,29 +166,22 @@ _SCHEME_DEFAULT_PORT = {"http": 80, "https": 443, "ssh": 22, "mysql": 3306, "red
 def parse_target(target: str, default_scheme: str = "http") -> tuple[str, int, str, str]:
     """解析 URL / host:port / 纯 host，返回 (scheme, host, port, url)。"""
     raw = str(target or "").strip().strip('"').strip("'")
-    scheme = ""
-    rest = raw
-    m = _URL_RE.match(raw)
-    if m:
-        scheme = m.group("scheme").lower()
-        rest = m.group("rest")
-    if not scheme:
-        scheme = default_scheme
-    # 去掉 userinfo
-    if "@" in rest.split("/")[0]:
-        rest = rest.split("@", 1)[1]
-    hm = _HOSTPORT_RE.match(rest)
-    if not hm:
-        return scheme, raw, _SCHEME_DEFAULT_PORT.get(scheme, 0), raw
-    host = hm.group("host").strip("[]")
-    port_s = hm.group("port")
-    port = int(port_s) if port_s else _SCHEME_DEFAULT_PORT.get(scheme, 0)
-    tail = hm.group("tail") or ""
-    url = f"{scheme}://{host}"
-    if port and port != _SCHEME_DEFAULT_PORT.get(scheme):
-        url += f":{port}"
-    url += tail
-    return scheme, host, port, url
+    scheme = default_scheme
+    try:
+        if any(c.isspace() for c in raw) or "\\" in raw or "\x00" in raw:
+            raise ValueError("invalid URL")
+        parsed = urllib.parse.urlsplit(raw if "://" in raw else f"{default_scheme}://{raw}")
+        scheme = parsed.scheme.lower()
+        host = (parsed.hostname or "").lower().rstrip(".")
+        if not host or parsed.username is not None or parsed.password is not None:
+            raise ValueError("host missing or embedded credentials")
+        port = parsed.port if parsed.port is not None else _SCHEME_DEFAULT_PORT.get(scheme, 0)
+        netloc = f"[{host}]" if ":" in host else host
+        if port != _SCHEME_DEFAULT_PORT.get(scheme):
+            netloc += f":{port}"
+        return scheme, host, port, urllib.parse.urlunsplit((scheme, netloc, parsed.path, parsed.query, parsed.fragment))
+    except ValueError:
+        return scheme, "", 0, raw
 
 
 def resolve_host(host: str) -> str:
@@ -180,6 +201,8 @@ def canonical_port(host: str, port: int) -> int:
     """
     h = (host or "").strip().lower()
     canonical = SERVICE_ALIASES.get(h)
+    if h == "sandbox-target":
+        return port  # choosing a sensitive port must not inherit port 8081 privileges
     if canonical and port and port != canonical:
         return canonical
     return port
@@ -276,7 +299,7 @@ def _split_command_tokens(command: str) -> list[str]:
     return [t for t in re.split(r"\s+", (command or "").strip()) if t]
 
 
-def build_action(tool: str, args: dict[str, Any]) -> ActionView:
+def build_action(tool: str, args: dict[str, Any], vfs_root: str | None = None) -> ActionView:
     """把工具调用参数归一化为 ActionView。"""
     args = args or {}
     view = ActionView(tool=tool, raw_args=dict(args))
@@ -286,11 +309,11 @@ def build_action(tool: str, args: dict[str, Any]) -> ActionView:
         default_scheme = "ssh" if tool == "ssh_connect" else "http"
         scheme, host, port, url = parse_target(str(raw_target), default_scheme)
         # 显式 port / params 覆盖
-        if args.get("port"):
+        if args.get("port") is not None:
             try:
                 port = int(args["port"])
             except (TypeError, ValueError):
-                pass
+                view.parse_error = "网络端口无效"
         # 语义与端口解耦：策略判定使用规范端口，执行仍用真实端口
         canonical = canonical_port(host, port)
         if canonical != port:
@@ -300,28 +323,47 @@ def build_action(tool: str, args: dict[str, Any]) -> ActionView:
         view.scheme, view.host, view.port, view.url = scheme, host, port, url
         view.policy_port = canonical
         view.resolved_host = resolve_host(host)
+        if not raw_target:
+            view.parse_error = "网络工具缺少明确的目标"
+        if not 0 < port <= 65535:
+            view.parse_error = "网络端口无效"
+        view.network_targets.append(NetworkTarget(host, port, scheme, url, view.resolved_host, canonical))
         view.notes.append(f"目标归一化: {url} -> {view.resolved_host}:{port}")
 
     if tool in ("read_file", "write_file"):
-        view.path = normalize_path(str(args.get("path") or args.get("file") or ""))
-        view.real_path = vfs_to_real(view.path)
+        view.path = normalize_path(str(args.get("path") or args.get("file") or ""), vfs_root)
+        view.real_path = vfs_to_real(view.path, vfs_root)
+        if not view.path:
+            view.parse_error = "文件工具缺少明确的目标路径"
 
     if tool == "run_command":
         cmd = str(args.get("command") or args.get("cmd") or "")
         view.command = cmd.strip()
-        first = view.command.split()
-        view.binary = os.path.basename(first[0]) if first else ""
-        # 命令里出现的主机也纳入网络维度（防止用 curl 绕过 host 白名单）
-        hosts = extract_hosts_from_command(view.command)
-        if hosts:
-            view.host, view.port = hosts[0]
-            view.policy_port = canonical_port(view.host, view.port)
-            view.resolved_host = resolve_host(view.host)
-            if not view.scheme:
-                view.scheme = "http"
+        plan = parse_command(view.command)
+        view.binary, view.argv, view.parse_error = plan.binary, plan.argv, plan.error
+        def command_path(raw: str) -> str:
+            p = raw.replace("\\", "/")
+            if not p.startswith("/") and not re.match(r"^[A-Za-z]:/", p):
+                p = "/sandbox_fake/" + p
+            return normalize_path(p, vfs_root)
+        view.read_paths = [command_path(p) for p in plan.reads]
+        view.list_paths = [command_path(p) for p in plan.lists]
+        for index, raw in plan.urls:
+            scheme, host, port, url = parse_target(raw)
+            if scheme not in ("http", "https") or not host or not 0 < port <= 65535:
+                view.parse_error = "curl 仅支持具有明确主机和有效端口的 HTTP(S) URL"
+            view.network_targets.append(NetworkTarget(host, port, scheme, url, resolve_host(host),
+                                                       canonical_port(host, port), index))
+        if view.network_targets:
+            target = view.network_targets[0]  # only for backwards-compatible display
+            view.host, view.port, view.scheme = target.host, target.port, target.scheme
+            view.policy_port, view.resolved_host = target.policy_port, target.resolved_host
 
     if tool == "exfiltrate":
         view.host = str(args.get("host") or "")
         view.resolved_host = resolve_host(view.host)
+
+    if tool not in ("web_scan", "http_get", "ssh_connect", "read_file", "write_file", "run_command", "exfiltrate"):
+        view.parse_error = f"工具 {tool} 尚无资源审计适配器"
 
     return view

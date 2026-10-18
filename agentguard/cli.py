@@ -159,12 +159,13 @@ ATTACK_CASES: list[dict[str, Any]] = [
 # ---------------------------------------------------------------------------
 # 子命令实现
 # ---------------------------------------------------------------------------
-def _load(policy: str, task: str = ""):
+def _load(policy: str, *, audit_only: bool = False):
     baseline_path = policy or DEFAULT_CONFIG
     if not os.path.isfile(baseline_path):
         print(f"[×] 找不到策略文件：{baseline_path}", file=sys.stderr)
         return None
-    guard = build_guard(config_path=baseline_path, guard_config=GuardConfig(enabled=True))
+    guard = build_guard(config_path=baseline_path,
+                        guard_config=GuardConfig(enabled=True, enable_rollback=not audit_only))
     guard.baseline.cfg["_vfs_root"] = VFS_ROOT
     return guard
 
@@ -214,7 +215,7 @@ def cmd_test(args: argparse.Namespace) -> int:
 
     for case in cases:
         # 每个用例一个独立会话，避免前一个用例的冻结状态影响后一个
-        guard = _load(args.policy, task=case.get("thought", ""))
+        guard = _load(args.policy)
         if guard is None:
             return 2
         from .tools import ToolBridge
@@ -292,7 +293,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
     if not os.path.isfile(path):
         print(f"[×] 找不到日志文件：{path}", file=sys.stderr)
         return 2
-    guard = _load(args.policy)
+    guard = _load(args.policy, audit_only=True)
     if guard is None:
         return 2
 
@@ -314,12 +315,10 @@ def cmd_scan(args: argparse.Namespace) -> int:
             if not tool:
                 continue
             total += 1
-            from .tools import ToolBridge
-
-            bridge = ToolBridge(guard, vfs_root=VFS_ROOT)
-            _result, verdict = bridge.execute(
-                tool, rec.get("args") or {}, thought=rec.get("thought", ""), step=lineno
-            )
+            # Offline audit must never replay a file write, command or network request.
+            from .types import ToolCall
+            verdict, _view = guard.evaluate(ToolCall(
+                tool=tool, args=rec.get("args") or {}, thought=rec.get("thought", ""), step=lineno))
             if not verdict.allowed:
                 blocked += 1
                 for f in verdict.findings:

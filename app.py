@@ -549,7 +549,7 @@ def main() -> None:
                         "实验组状态": on["run"].status,
                         "拦截的逃逸类型": "、".join(on["guard"].summary()["escape_types"]) or "—",
                         "逃逸被阻止": "✅" if (off["run"].escaped and not on["run"].escaped) else "—",
-                        "误伤": "⚠️ 是" if (not off["run"].escaped and on["guard"].summary()["blocked"] > 0) else "否",
+                        "误伤": "⚠️ 是" if (key == "1" and on["guard"].summary()["blocked"] > 0) else "否",
                         "_on_report": on["guard"].to_report(),
                     }
                 )

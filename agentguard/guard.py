@@ -203,7 +203,7 @@ class SandboxGuard:
         返回 (Verdict, ActionView)。调用方只在 ``verdict.allowed`` 为真时执行工具。
         """
         t0 = time.perf_counter()
-        view = build_action(call.tool, call.args)
+        view = build_action(call.tool, call.args, self.vfs_root)
         findings: list[Finding] = []
 
         # ---------- 防护关闭：对照组，直接放行（保留审计记录以便对比） ----------
@@ -216,7 +216,7 @@ class SandboxGuard:
                 latency_ms=(time.perf_counter() - t0) * 1000,
             )
             self.monitor.record(
-                ActionRecord(step=call.step, tool=call.tool, view=view, allowed=True, decision="ALLOW(防护关闭)")
+                ActionRecord(step=call.step, tool=call.tool, view=view, allowed=True, decision="ALLOW(防护关闭)", call_id=call.call_id)
             )
             self.emit(
                 GuardEvent(
@@ -253,7 +253,7 @@ class SandboxGuard:
                 latency_ms=(time.perf_counter() - t0) * 1000,
             )
             self.monitor.record(
-                ActionRecord(step=call.step, tool=call.tool, view=view, allowed=False, decision="ISOLATE(会话冻结)")
+                ActionRecord(step=call.step, tool=call.tool, view=view, allowed=False, decision="ISOLATE(会话冻结)", call_id=call.call_id)
             )
             self.emit(
                 GuardEvent(
@@ -367,6 +367,7 @@ class SandboxGuard:
                 allowed=verdict.allowed,
                 decision=verdict.decision.value,
                 risk=verdict.summary if not verdict.allowed else "",
+                call_id=call.call_id,
             )
         )
 
@@ -429,6 +430,16 @@ class SandboxGuard:
             layers.append(Layer.RUNTIME.value)
         return layers
 
+    def record_result(self, call: ToolCall, result: ToolResult) -> None:
+        """Record observed execution separately from permission to execute."""
+        self.monitor.record_result(call.call_id, result)
+        self.emit(GuardEvent(kind="execution", title=f"工具执行结果：{call.tool}",
+            detail="执行成功" if result.ok else "未成功执行",
+            step=call.step, tool=call.tool,
+            payload={"call_id": call.call_id, "ok": result.ok, "executed": result.executed,
+                     "blocked": result.blocked, "effects": result.effects,
+                     "effects_complete": result.meta.get("effects_complete", False)}))
+
     # ------------------------------------------------------------------ 统计
     def summary(self) -> dict[str, Any]:
         n_block = sum(1 for e in self.events if e.kind in ("block", "isolate"))
@@ -473,6 +484,8 @@ def build_guard(
     guard_config: GuardConfig | None = None,
     llm: Any = None,
     session_id: str = "",
+    task: str = "",
+    vfs_root: str | None = None,
 ) -> SandboxGuard:
     """按默认路径装配一个可用的防护引擎。
 
@@ -480,12 +493,15 @@ def build_guard(
     ``sdk`` 需要它，而 ``sdk`` 又被包根导入。
     """
     baseline = load_baseline(config_path or DEFAULT_CONFIG_PATH)
+    if task:
+        baseline.cfg.setdefault("experiment", {}).setdefault("task_baseline", {})["goal"] = task
+        baseline.task_goal = task
     # 让防护层知道虚拟文件系统的真实根（用于回滚快照）
-    baseline.cfg["_vfs_root"] = VFS_ROOT
+    baseline.cfg["_vfs_root"] = os.path.abspath(vfs_root or VFS_ROOT)
     return SandboxGuard(
         baseline,
         config=guard_config or GuardConfig(),
         llm=llm,
         session_id=session_id,
-        vfs_real_root=VFS_ROOT,
+        vfs_real_root=baseline.cfg["_vfs_root"],
     )

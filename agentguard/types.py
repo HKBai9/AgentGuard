@@ -170,6 +170,8 @@ class ToolResult:
     output: str
     meta: dict[str, Any] = field(default_factory=dict)
     blocked: bool = False
+    executed: bool = False
+    effects: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
