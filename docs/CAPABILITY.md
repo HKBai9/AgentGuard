@@ -69,10 +69,13 @@ SandboxGuard.evaluate(token=...)  ← L0 验证 + L1/L2/L3/LT 检测 + L4 响应
 |---|---|---|
 | `tool_in` | 工具 | 委派子作用域只允许 `read_file` |
 | `path_glob_any` | 文件路径 | 读票据硬编码 `/sandbox_fake/workspace/**` 等白名单 |
+| `path_regex` | 文件路径（正则） | `^/sandbox_fake/workspace/notes/[^/]+\.md$`——参数空间约束的任意形态（配置 `files.read_regex`/`write_regex`），与 glob **叠加**生效、只能更严 |
 | `host_in` / `port_allowed` / `scheme_in` | 网络目标 | 只能访问登记主机、非敏感端口、http 协议 |
 | `bin_in` / `no_pattern` / `net_targets_allowed` | 命令 | 只能执行白名单二进制且不得命中危险模式 |
 
 谓词参与 HMAC 签名：**篡改谓词 = 签名失效**（`L0-MAC`）。
+只读/只写语义隔离由签发保证：读票据绑定工具（换工具即 `L0-TOOL-MISMATCH`）
++ 路径谓词双重收窄，读凭证无法用于任何修改状态的操作。
 
 ### 2.5 离线衰减（Attenuation-only Delegation）
 
@@ -100,13 +103,28 @@ child_scope = authority.derive_scope(parent_scope, label, allowed_tools=[...])
 ```
 
 替代"无状态 JWT 一旦签发便难以撤销"的缺陷：
-每个票据指向撤销树上自己的节点；`node.dead_ancestor()` 沿父链检查，
-任一祖先被标记失效（`registry.revoke(node)`，O(1)）⇒ 整棵子树上的
-票据在**毫秒级**全部失效，无需遍历、无需过期等待。
 
-**熔断开关**：`guard.revoke_all_capabilities()` 撤销会话根——
-UI 上"⛔ 熔断"按钮即为演示入口；撤销后连**新签发**的票据
-（挂在已撤销根下）也立即失效。
+- **票据不直接调用工具**：ToolBridge / SDK 的执行路径经由显式的
+  :class:`Caretaker` 代理（`agentguard/capability.py`）。代理持有票据与
+  撤销纪元引用，`dispatch()` 在执行前复核存活状态（自身与全部祖先未撤销 +
+  租约未过期 + 配额未耗尽 + 谓词满足），执行成功后消耗票据；
+  复核失败则 executor **根本不会被调用**。这与判定层
+  （`guard.evaluate` 内的 `authority.verify`）构成**双重检查**——
+  判定与执行之间毫秒窗口内的撤销/过期同样被拦下（TOCTOU 防御）。
+- 每个票据指向撤销树上自己的节点；`node.dead_ancestor()` 沿父链检查，
+  任一祖先被标记失效（`registry.revoke(node)`，O(1)）⇒ 整棵子树上的
+  票据在**毫秒级**全部失效，无需遍历、无需过期等待。
+- 已撤销作用域**不再签发任何新票据**（`L0-SCOPE-REVOKED`，fail-closed）。
+
+**撤销的三类触发器**（全部自动留审计痕）：
+
+| 触发器 | 行为 | 规则 |
+|---|---|---|
+| ① 检测层发现异常 | L4 判定 `ISOLATE` 的同时自动撤销会话根（不等人工介入） | `L0-REVOKED` / 后续签发 `L0-SCOPE-REVOKED` |
+| ② 父任务结束 | `delegate_task` 返回/异常时自动收回子作用域（不等 TTL） | `L0-SCOPE-REVOKED` |
+| ③ 人工熔断开关 | UI「⛔ 熔断」/ `guard.revoke_all_capabilities()` 撤销会话根 | `L0-REVOKED`，epoch+1 |
+
+**熔断开关**：撤销后连**新签发**的票据（挂在已撤销根下）也立即失效。
 
 ### 2.7 降权 ≠ 冻结
 
@@ -162,12 +180,15 @@ Agent 摄入 `UNTRUSTED` 内容 ⇒ 上下文"已污染"（观察结果尾部附
 
 ## 四、实验证据
 
-### 4.1 判定矩阵回归（`python -m pytest -q`，59 项）
+### 4.1 判定矩阵回归（`python -m pytest -q`，87 项 = 34 四层 + 32 L0/LT + 21 SDK）
 
-新增 25 项覆盖：零初始权限、TTL 过期、单次配额重放、步骤绑定、
+L0/LT 共 32 项覆盖：零初始权限、TTL 过期、单次配额重放、步骤绑定、
 HMAC 防伪造（票据/谓词/作用域三路）、衰减与传递衰减、
 级联撤销与兄弟存活、熔断、污点分级/降权/去污/核准、不误伤回归、
-消融开关（关闭 L0/LT 后回到 v1.0 行为）、对照组零签发。
+消融开关（关闭 L0/LT 后回到 v1.0 行为）、对照组零签发；
+v1.2 追加：**隔离自动撤销**、**委派结束收回子作用域**（`L0-SCOPE-REVOKED`）、
+**正则参数谓词**（path_regex）、**显式 Caretaker 代理**（TOCTOU 复核 + 成功消耗）、
+SDK 路径权能闭环。
 
 ### 4.2 权能生命周期攻击面演示（`python experiments/run_capability_demo.py`）
 
@@ -216,8 +237,8 @@ HMAC 防伪造（票据/谓词/作用域三路）、衰减与传递衰减、
 ## 六、复现指令
 
 ```powershell
-python -m pytest -q                                  # 59 项判定矩阵
-python experiments/run_capability_demo.py            # 权能生命周期 13 场景
+python -m pytest -q                                  # 87 项判定矩阵
+python experiments/run_capability_demo.py            # 权能生命周期 16 场景
 python experiments/run_experiment.py                 # 六组对照（脚本回放，秒级）
 python experiments/run_experiment.py --case 5,6      # 只看新增两用例
 .\start_demo.ps1                                     # UI：权能运行台 / 熔断开关 / 人工核准

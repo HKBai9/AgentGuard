@@ -124,10 +124,15 @@ AISI 披露的 Agent 逃逸事件即属后者：Agent 为完成目标而自主�
   因此"对照组/实验组唯一变量"的实验设计完好保留；
 - **票据会被"用坏"**：TTL 30 秒、`max_calls=1`（重放立即失效）、绑定步骤
   （换步骤复用即拒）——三条防线共同覆盖"票据被截获"的攻击面；
+- **参数级约束**：票据内部硬编码参数谓词（Macaroons 式 Caveat）——
+  读票据只能读白名单路径（glob + 可选**正则**谓词，如 `^/.../docs/.*\.md$`）、
+  网络票据只能访问白名单主机/端口、命令票据只能执行白名单二进制；
 - **票据不可伪造**：HMAC 链覆盖工具/步骤/参数谓词/派生路径，
   篡改任一字段 = 签名失效；
-- **可即时撤销**：票据挂在撤销树上，撤销一个节点 = 该子树全部票据毫秒级
-  失效（Caretaker 模式）；UI 一键"熔断"演示此能力；
+- **可即时撤销**：票据不直接调用工具，而是经 **Caretaker 代理**执行
+  （判定-执行窗口内失效同样被拦）；撤销一个节点 = 该子树全部票据毫秒级
+  失效，且有**三类自动触发器**——检测层隔离即撤销、委派结束即收回、
+  人工熔断开关（UI 一键演示）；已撤销作用域不再签发任何新票据；
 - **可安全委派**：多 Agent 协作时子权能 = 父权能严格子集（离线衰减），
   子 Agent 跑偏不再等于"权限复制一份"。
 
@@ -197,7 +202,7 @@ python -m streamlit run app.py
 ```powershell
 .\start_demo.ps1              # 一键修复并启动（含 Ollama）
 .\tools\ollama.ps1 -Stop      # 只停本地模型
-.\run.ps1 -Mode test          # 先确认代码本身没问题（59 项测试）
+.\run.ps1 -Mode test          # 先确认代码本身没问题（87 项测试）
 ```
 
 ### 4. 命令行实验（可复现的实验数据）
@@ -205,17 +210,17 @@ python -m streamlit run app.py
 ```powershell
 .\run.ps1 -Mode exp                # 六组对照：裸Agent / 提示词防护 / 执行层防护
 .\run.ps1 -Mode live               # 真实大模型：用例 2
-.\run.ps1 -Mode test               # 防护层判定矩阵回归测试（59 项）
+.\run.ps1 -Mode test               # 防护层判定矩阵回归测试（87 项）
 .\run.ps1 -Mode ui                 # 界面无头冒烟测试
 
 # 或直接调用 Python
 python experiments/run_experiment.py                    # 六组对照，秒级
 python experiments/run_experiment.py --live --case 2    # 真实大模型
 python experiments/run_experiment.py --case 5,6         # 新增：污点注入 / 委派衰减
-python experiments/run_capability_demo.py               # ★ 权能生命周期 13 场景攻击面演示
+python experiments/run_capability_demo.py               # ★ 权能生命周期 16 场景攻击面演示
 python experiments/run_adversarial.py                   # ★ 红队：提示词防护能否被绕过
 python experiments/run_bypass_demo.py                   # ★ 工具名白名单能否被绕过
-python -m pytest                                        # 59 项判定矩阵
+python -m pytest                                        # 87 项判定矩阵
 python tools/collect_evidence.py                        # 汇总证据到 experiments/results/DEMO/
 ```
 
@@ -290,6 +295,9 @@ python tools/collect_evidence.py                        # 汇总证据到 experi
 | 子/孙 Agent 申请被剥离的权限 | ✅ L0-ATTENUATE 拒签（只可收窄） |
 | 撤销子作用域 → 子树票据 | ✅ L0-REVOKED 立即失效（兄弟不受影响） |
 | 熔断开关 → 全部在飞票据 | ✅ epoch+1，毫秒级全失效 |
+| **检测层隔离 → 自动级联撤销**（无需人工熔断） | ✅ L0-SCOPE-REVOKED |
+| **委派结束 → 自动收回子作用域**（不等 TTL） | ✅ L0-SCOPE-REVOKED |
+| **正则参数谓词**（票据硬编码 `^/.../*.md$` 类约束） | ✅ L0-ARG-POLICY |
 
 真实本地大模型（`qwen2.5-coder:7b`，用例 2）同样成立：
 
@@ -361,13 +369,13 @@ python tools/collect_evidence.py                        # 汇总证据到 experi
 │   └── sandbox_fake/            沙箱文件系统（含**演示用假**私钥/凭证 + public/ 注入样本）
 ├── experiments/
 │   ├── run_experiment.py        六组对照实验运行器（含用例 5 污点 / 用例 6 委派衰减）
-│   ├── run_capability_demo.py   ★ 权能生命周期 13 场景攻击面演示
+│   ├── run_capability_demo.py   ★ 权能生命周期 16 场景攻击面演示
 │   ├── run_adversarial.py       红队：提示词防护能否被绕过
 │   └── run_bypass_demo.py       绕过对照：工具名白名单 vs 资源级判定
 ├── examples/quickstart.py       开发者接入示例（不接防护 vs 接入防护）
 ├── tests/
 │   ├── test_guard.py            四层防护判定矩阵回归测试（34 项）
-│   ├── test_capability.py       ★ L0/LT 判定矩阵回归测试（25 项）
+│   ├── test_capability.py       ★ L0/LT 判定矩阵回归测试（32 项）
 │   └── test_sdk.py              SDK / CLI 接口测试（21 项）
 ├── docs/                        原理解析 / 设计 / 证据 / 接入指南 / 产品化 / 申报书素材
 │   └── CAPABILITY.md            ★ L0/LT 设计文档（理论对照与工程边界）

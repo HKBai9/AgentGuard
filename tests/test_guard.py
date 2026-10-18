@@ -183,6 +183,8 @@ def test_sequence_credential_then_internal_connection():
     cfg = GuardConfig(enabled=True, enable_intent=False)  # 只留基线与行为层
     guard = build_guard(guard_config=cfg, session_id="seq-test")
     guard.baseline.file_read.append("/sandbox_fake/.ssh/**")
+    # 同步放宽正则谓词（v1.1 起 read 票据内嵌 glob+regex 双重路径约束）
+    guard.baseline.file_read_regex = []
     _drop = (".ssh", "id_rsa", "id_ed25519")
     guard.baseline.file_protected = [
         r

@@ -28,8 +28,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .action import ActionView, build_action, vfs_to_real
+from .capability import Caretaker
 from .guard import SandboxGuard
-from .types import GuardEvent, Severity, ToolCall, ToolResult, Verdict
+from .types import Decision, GuardEvent, Severity, ToolCall, ToolResult, Verdict
 
 # 允许 run_command 真正执行的二进制（安全兜底：即使防护被关闭，
 # 本工具也不会调用 shell，避免演示环境被误用于真实攻击）
@@ -110,6 +111,8 @@ class ToolBridge:
         self.llm: Any = None
         # 子 Agent 的模型工厂：脚本回放模式下按子任务返回确定性轨迹
         self.child_llm_factory: Any = None
+        # 最近一次 delegate_task 派生的子作用域（供测试与 UI 观测）
+        self.last_child_scope: Any = None
         # 沙箱内"受保护但不存在"的路径探测记录（见 _load_fake_key）
         self._pending_probes: list[tuple[str, str]] = []
         self._seeded_paths: list[str] = []
@@ -178,36 +181,42 @@ class ToolBridge:
             # ---- 关键点：工具**完全没有被执行**，不存在任何副作用 ----
             output = self._blocked_output(tool, verdict)
             result = ToolResult(ok=False, output=output, blocked=True, meta={"verdict": verdict.to_dict()})
+        elif token is not None and gc.enabled and gc.enable_capability:
+            # ---- 经 Caretaker 代理执行：判定与执行之间再拦一次（TOCTOU 防御） ----
+            caretaker = Caretaker(self.guard.authority, token)
+            ok_exec, output, late_findings = caretaker.dispatch(
+                tool, view, step,
+                executor=lambda: self._dispatch(tool, args, view, step, scope=eff_scope),
+            )
+            if not ok_exec:
+                # 极端窗口：判定通过后、执行前票据失效（被撤销/过期）——仍不执行
+                verdict.findings.extend(late_findings)
+                verdict.decision = Decision.BLOCK
+                self.guard.emit(
+                    GuardEvent(
+                        kind="capability",
+                        title="L0 Caretaker 复核拦截（判定-执行窗口内失效）",
+                        detail=late_findings[0].reason if late_findings else "",
+                        severity=Severity.HIGH,
+                        step=step,
+                        tool=tool,
+                        payload={"late_findings": [f.to_dict() for f in late_findings]},
+                    )
+                )
+                result = ToolResult(
+                    ok=False,
+                    output=self._blocked_output(tool, verdict),
+                    blocked=True,
+                    meta={"verdict": verdict.to_dict()},
+                )
+            else:
+                tagged = self._after_success(tool, view, step, output, gc)
+                result = ToolResult(ok=True, output=self._clip(tagged))
         else:
             try:
                 output = self._dispatch(tool, args, view, step, scope=eff_scope)
-                result = ToolResult(ok=True, output=self._clip(output))
-                # 票据消耗：配额 +1（单次即作废，天然防重放）
-                if token is not None:
-                    self.guard.authority.consume(token)
-                # 污点标记：按输入来源分级，UNTRUSTED 摄入即污染上下文
-                if gc.enabled and gc.enable_taint:
-                    label = self.guard.taint.classify(tool, view)
-                    newly = self.guard.taint.mark(tool, view, step, observation=output)
-                    tag = self.guard.taint.observation_tag(label)
-                    if tag:
-                        result.output = self._clip(output + tag)
-                    if newly:
-                        self.guard.emit(
-                            GuardEvent(
-                                kind="taint",
-                                title="⚠️ 上下文被污染（摄入 UNTRUSTED 内容）",
-                                detail=(
-                                    f"step{step} 通过 `{tool}` 摄入任务范围外内容 "
-                                    f"`{view.path or view.url or view.host}`，上下文转为已污染，"
-                                    f"高危工具将按降权矩阵拒绝签发"
-                                ),
-                                severity=Severity.HIGH,
-                                step=step,
-                                tool=tool,
-                                payload={"taint": self.guard.taint.snapshot()},
-                            )
-                        )
+                tagged = self._after_success(tool, view, step, output, gc)
+                result = ToolResult(ok=True, output=self._clip(tagged))
             except Exception as exc:  # 工具自身异常不影响防护
                 result = ToolResult(ok=False, output=f"[工具异常] {type(exc).__name__}: {exc}")
 
@@ -225,6 +234,31 @@ class ToolBridge:
             )
         )
         return result, verdict
+
+    def _after_success(self, tool: str, view, step: int, output: str, gc) -> str:
+        """执行成功后的统一后处理：污点分级标记 + 污染事件（返回带标记的输出）。"""
+        if not (gc.enabled and gc.enable_taint):
+            return output
+        label = self.guard.taint.classify(tool, view)
+        newly = self.guard.taint.mark(tool, view, step, observation=output)
+        tag = self.guard.taint.observation_tag(label)
+        if newly:
+            self.guard.emit(
+                GuardEvent(
+                    kind="taint",
+                    title="⚠️ 上下文被污染（摄入 UNTRUSTED 内容）",
+                    detail=(
+                        f"step{step} 通过 `{tool}` 摄入任务范围外内容 "
+                        f"`{view.path or view.url or view.host}`，上下文转为已污染，"
+                        f"高危工具将按降权矩阵拒绝签发"
+                    ),
+                    severity=Severity.HIGH,
+                    step=step,
+                    tool=tool,
+                    payload={"taint": self.guard.taint.snapshot()},
+                )
+            )
+        return (output + tag) if tag else output
 
     def _blocked_output(self, tool: str, verdict: Verdict) -> str:
         lines = [
@@ -750,7 +784,32 @@ class ToolBridge:
             max_steps=4,
             scope=child_scope,
         )
-        run = child.run(subtask, llm_mode="委派子Agent")
+        # 记录最近一次委派的作用域（供测试与 UI 观测）
+        self.last_child_scope = child_scope
+        try:
+            run = child.run(subtask, llm_mode="委派子Agent")
+        finally:
+            # 父任务结束（或中途异常/被隔离）：自动收回子作用域——
+            # 该子树上的全部票据立即级联失效，无需等待 TTL 自然过期
+            gc = self.guard.config
+            if gc.enabled and gc.enable_capability and child_scope.node.is_alive():
+                self.guard.authority.revoke_scope(
+                    child_scope, "委派结束：父任务自动收回子 Agent 权能"
+                )
+                self.guard.emit(
+                    GuardEvent(
+                        kind="revoke",
+                        title="🔁 委派结束：自动收回子 Agent 权能",
+                        detail=(
+                            f"子作用域 {child_scope.path_str()} 已标记失效，"
+                            f"其派生票据全部级联作废（无需等待 TTL 过期）"
+                        ),
+                        severity=Severity.MEDIUM,
+                        step=step,
+                        tool="delegate_task",
+                        payload={"scope": child_scope.path_str()},
+                    )
+                )
 
         self.guard.emit(
             GuardEvent(

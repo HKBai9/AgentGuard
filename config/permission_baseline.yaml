@@ -130,6 +130,13 @@ resources:
     write:
       - "/sandbox_fake/workspace/reports/**"
       - "/sandbox_fake/workspace/tmp/**"
+    # 可选：路径正则谓词（参数空间约束，与上面 glob 白名单【叠加】生效、只能更严）
+    # 签发给 Agent 的 read_file/write_file 票据会把它们硬编码进去，
+    # 例：'^/workspace/project/docs/.*\.md$'（本演示用下面的宽松等价配置）
+    read_regex:
+      - '^/sandbox_fake/(workspace|targets|public)/.*$'
+    write_regex:
+      - '^/sandbox_fake/workspace/(reports|tmp)/.*$'
     # 显式保护的敏感路径（命中即高危：凭证/私钥/系统配置）
     protected:
       - pattern: "**/.ssh/**"

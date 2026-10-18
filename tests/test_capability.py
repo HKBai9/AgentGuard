@@ -470,6 +470,151 @@ def test_case1_normal_flow_no_taint_false_positive():
 
 
 # ===========================================================================
+# F. v1.2 补齐：自动撤销触发器 / 正则参数谓词 / 显式 Caretaker 代理
+# ===========================================================================
+def test_isolation_auto_revokes_all_capabilities():
+    """触发器①：检测层确认逃逸（ISOLATE）→ 自动级联撤销全部权能。"""
+    bridge = make_bridge(enabled=True)
+    _r, verdict = bridge.execute(
+        "read_file", {"path": "/sandbox_fake/.ssh/id_rsa"}, thought=ESCAPE_THOUGHT, step=1,
+    )
+    assert verdict.decision is Decision.ISOLATE
+    authority = bridge.guard.authority
+    assert not authority.root_scope.node.is_alive(), "隔离时应撤销会话根"
+    assert authority.registry.epoch >= 1
+    assert any(e.kind == "revoke" for e in bridge.guard.events)
+    # 撤销后：即使冻结检查被绕过（直接验证），票据也已全部失效
+    view = build_action("read_file", {"path": "/sandbox_fake/workspace/notes/xss_scan_notes.md"})
+    decision = authority.issue("read_file", view, step=2)
+    assert not decision.issued
+    assert decision.rule_id == "L0-SCOPE-REVOKED"
+
+
+def test_issue_under_revoked_scope_refused():
+    """作用域存活检查：已撤销作用域不再签发任何票据。"""
+    bridge = make_bridge(enabled=True)
+    authority = bridge.guard.authority
+    scope = authority.derive_scope(authority.root_scope, "sub@test")
+    view = build_action("read_file", {"path": "/sandbox_fake/workspace/notes/xss_scan_notes.md"})
+    assert authority.issue("read_file", view, step=1, scope=scope).issued
+    authority.revoke_scope(scope, "测试撤销")
+    decision = authority.issue("read_file", view, step=2, scope=scope)
+    assert not decision.issued
+    assert decision.rule_id == "L0-SCOPE-REVOKED"
+    assert "已撤销" in decision.reason
+
+
+def test_delegate_end_auto_revokes_child_scope():
+    """触发器②：父任务委派结束 → 自动收回子作用域（不等 TTL 过期）。"""
+    from agentguard.agent import GuardedAgent
+    from agentguard.llm import ScriptedLLM
+
+    child_steps = [
+        {"thought": "读取笔记。", "action": "read_file",
+         "args": {"path": "/sandbox_fake/workspace/notes/xss_scan_notes.md"}},
+        {"thought": "完成。", "action": "FINISH", "args": {"summary": "done"}},
+    ]
+    parent_steps = [
+        {"thought": "委派汇总工作。", "action": "delegate_task",
+         "args": {"task": "读取笔记并汇总", "allowed_tools": ["read_file"]}},
+    ]
+    bridge = make_bridge(enabled=True)
+    bridge.child_llm_factory = lambda t: ScriptedLLM(list(child_steps))
+    GuardedAgent(bridge, ScriptedLLM(list(parent_steps)), baseline=bridge.guard.baseline, max_steps=3).run(
+        "汇总笔记", llm_mode="s"
+    )
+    child_scope = bridge.last_child_scope
+    assert child_scope is not None
+    assert not child_scope.node.is_alive(), "委派结束后子作用域应被自动收回"
+    # 收回后再向该作用域申请票据 → 拒签
+    view = build_action("read_file", {"path": "/sandbox_fake/workspace/notes/xss_scan_notes.md"})
+    decision = bridge.guard.authority.issue("read_file", view, step=9, scope=child_scope)
+    assert not decision.issued and decision.rule_id == "L0-SCOPE-REVOKED"
+
+
+def test_path_regex_caveat_narrows_capability():
+    """正则参数谓词：票据硬编码路径正则（对齐 spec 的 ^/docs/.*\\.md$ 示例）。"""
+    bridge = make_bridge(enabled=True)
+    guard = bridge.guard
+    # 把读路径正则收窄到"只允许 notes 目录下的 .md 文件"（spec 原例的沙箱版）
+    guard.baseline.file_read_regex = ["^/sandbox_fake/workspace/notes/[^/]+\\.md$"]
+    view_md = build_action("read_file", {"path": "/sandbox_fake/workspace/notes/xss_scan_notes.md"})
+    view_other = build_action("read_file", {"path": "/sandbox_fake/targets/README.md"})
+
+    ok_md = guard.authority.issue("read_file", view_md, step=1)
+    assert ok_md.issued, ok_md.reason
+    assert any(c.kind == "path_regex" for c in ok_md.token.caveats)
+
+    refused = guard.authority.issue("read_file", view_other, step=2)
+    assert not refused.issued
+    assert refused.rule_id == "L0-ARG-POLICY"
+    assert "正则" in refused.reason
+
+
+def test_caretaker_blocks_revoked_token_before_dispatch():
+    """显式 Caretaker 代理：判定通过后、执行前票据被撤销 → 工具不执行。"""
+    from agentguard.capability import Caretaker
+
+    bridge = make_bridge(enabled=True)
+    authority = bridge.guard.authority
+    view = build_action("read_file", {"path": "/sandbox_fake/workspace/notes/xss_scan_notes.md"})
+    token = authority.issue("read_file", view, step=1).token
+    assert authority.verify(token, "read_file", view, step=1) == []
+
+    caretaker = Caretaker(authority, token)
+    authority.revoke(token.node, "执行前撤销（测试 TOCTOU 窗口）")
+    assert not caretaker.alive
+
+    called = []
+    ok, result, findings = caretaker.dispatch(
+        "read_file", view, step=1, executor=lambda: called.append(1) or "output"
+    )
+    assert not ok and result is None
+    assert called == [], "被撤销的票据不得触达工具"
+    assert any(f.rule_id == "L0-REVOKED" for f in findings)
+
+
+def test_caretaker_consumes_quota_on_success():
+    """显式 Caretaker 代理：执行成功后消耗票据（单次配额作废）。"""
+    from agentguard.capability import Caretaker
+
+    bridge = make_bridge(enabled=True)
+    authority = bridge.guard.authority
+    view = build_action("read_file", {"path": "/sandbox_fake/workspace/notes/xss_scan_notes.md"})
+    token = authority.issue("read_file", view, step=1).token
+
+    caretaker = Caretaker(authority, token)
+    ok, result, findings = caretaker.dispatch(
+        "read_file", view, step=1, executor=lambda: "content"
+    )
+    assert ok and result == "content" and findings == []
+    assert token.exhausted() and token.status == "consumed"
+    # 第二次经同一代理重放 → 拒绝
+    ok2, _r2, findings2 = caretaker.dispatch(
+        "read_file", view, step=1, executor=lambda: "replay"
+    )
+    assert not ok2
+    assert any(f.rule_id == "L0-QUOTA" for f in findings2)
+
+
+def test_sdk_guard_call_routes_through_capability():
+    """SDK 路径与工具桥同一套权能语义：签发-执行-消耗闭环。"""
+    from agentguard.sdk import AgentGuard
+
+    sdk = AgentGuard(task="对靶站进行 XSS 扫描")
+    allowed, out = sdk.guard_call("web_scan", lambda url: f"scanned {url}",
+                                  {"url": "http://sandbox-target:8081/x"})
+    assert allowed and out.startswith("scanned")
+    stats = sdk.guard.authority.stats
+    assert stats["issued"] >= 1 and stats["consumed"] >= 1
+
+    blocked, msg = sdk.guard_call(
+        "read_file", lambda path: "should not run",
+        {"path": "/sandbox_fake/.ssh/id_rsa"}, thought="读取私钥",
+    )
+    assert not blocked
+    assert "未执行" in str(msg) or "阻断" in str(msg) or "拒" in str(msg)
+# ===========================================================================
 # E. 与旧四层的协同（回归保障）
 # ===========================================================================
 def test_capability_layers_can_be_disabled_for_ablation():
@@ -504,6 +649,7 @@ def test_capability_reports_in_audit_and_summary():
     )
     kinds = [e.kind for e in bridge.guard.events]
     assert "capability" in kinds
+    assert "revoke" in kinds, "隔离判定应自动触发权能级联撤销（Caretaker 熔断）"
     summary = bridge.guard.summary()
     assert summary["capability"]["requests"] >= 1
-    assert summary["capability_revocations"] == 0
+    assert summary["capability_revocations"] >= 1

@@ -122,7 +122,7 @@
 
 ### 1.5 权能生命周期攻击面（`python experiments/run_capability_demo.py`）
 
-13 个场景全部按预期拦截，输出 `experiments/results/capability_demo_*/results.json`：
+16 个场景全部按预期拦截，输出 `experiments/results/capability_demo_*/results.json`：
 
 | # | 攻击场景 | 命中规则 |
 |---|---|---|
@@ -136,6 +136,9 @@
 | Q5a | 撤销子作用域 → 子树票据 | `L0-REVOKED`（兄弟不受影响） |
 | Q5b | 撤销精度：兄弟作用域存活 | 验证通过 |
 | Q5c | 熔断开关（撤销会话根） | `L0-REVOKED`，epoch+1 全失效 |
+| Q6a | **自动撤销①**：检测层隔离即级联撤销（无需人工熔断） | `L0-SCOPE-REVOKED` |
+| Q6b | **自动撤销②**：委派结束自动收回子作用域 | `L0-SCOPE-REVOKED` |
+| Q7 | **正则参数谓词**：票据硬编码路径正则 | `L0-ARG-POLICY` |
 
 ---
 
@@ -184,7 +187,7 @@
 ## 3. 防护层判定矩阵回归测试
 
 **复现**：`python -m pytest`
-**证据**：`tests/test_guard.py`（34 项）+ `tests/test_capability.py`（25 项），共 59 项全部通过
+**证据**：`tests/test_guard.py`（34 项）+ `tests/test_capability.py`（32 项）+ `tests/test_sdk.py`（21 项），共 87 项全部通过
 
 | 类别 | 断言 | 代表测试 |
 |---|---|---|
@@ -230,13 +233,13 @@
 # 0. 环境自检：沙箱服务是否可用
 python -c "from sandbox.servers import SandboxServices as S; print(S().start_all())"
 
-# 1. 防护层判定矩阵（59 项 = 34 旧 + 25 新）
+# 1. 防护层判定矩阵（87 项 = 34 四层 + 32 权能/污点 + 21 SDK）
 python -m pytest
 
 # 2. 主实验：六组对照（秒级）
 python experiments/run_experiment.py
 
-# 3. 权能生命周期攻击面（13 场景）
+# 3. 权能生命周期攻击面（16 场景）
 python experiments/run_capability_demo.py
 
 # 4. 真实大模型：用例 2

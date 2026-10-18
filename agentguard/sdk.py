@@ -35,6 +35,7 @@ from typing import Any, Callable, Iterable, Mapping
 # 注意：这里**必须**从子模块直接导入，不能 `from . import ...`。
 # sdk 会被包根的 __init__ 导入，若再从包根取符号就会形成循环导入。
 from .action import build_action
+from .capability import Caretaker
 from .guard import GuardConfig, SandboxGuard, build_guard
 from .paths import DEFAULT_CONFIG_PATH as DEFAULT_CONFIG
 from .paths import VFS_ROOT
@@ -331,12 +332,27 @@ class AgentGuard:
         # 允许执行。参数以"具名"形式传入（bind_args 的产物）。
         call_args = dict(args or {})
         positional = call_args.pop("_args", None)
+        gc = self._guard.config
+
+        def _invoke():
+            if positional:
+                return func(*positional, **call_args)
+            return func(**call_args)
+
         result: Any
         try:
-            if positional:
-                result = func(*positional, **call_args)
+            if gc.enabled and gc.enable_capability and token is not None:
+                # 经 Caretaker 代理执行：判定-执行窗口内票据失效则仍不执行（TOCTOU 防御）
+                caretaker = Caretaker(self._guard.authority, token)
+                ok_exec, result, late_findings = caretaker.dispatch(
+                    tool, view, self._step, executor=_invoke
+                )
+                if not ok_exec:
+                    verdict.findings.extend(late_findings)
+                    verdict.decision = Decision.BLOCK
+                    return False, self._blocked_payload(tool, verdict)
             else:
-                result = func(**call_args)
+                result = _invoke()
         except TypeError as exc:
             # 参数绑不上（多半是工具的签名与框架传来的参数不一致）。
             # 这是**调用方契约问题**，不能静默吞掉 —— 否则看起来像"被拦住了"，
@@ -347,10 +363,7 @@ class AgentGuard:
                 f"请检查工具签名，或用 ToolSpec 显式描述参数。"
             ) from exc
 
-        # 执行成功后：消耗票据（单次配额作废）+ 污点标记（与 ToolBridge 一致）
-        gc = self._guard.config
-        if gc.enabled and gc.enable_capability and token is not None:
-            self._guard.authority.consume(token)
+        # 执行成功后：污点标记（与 ToolBridge 一致；票据已由 Caretaker 消耗）
         if gc.enabled and gc.enable_taint:
             self._guard.taint.mark(tool, view, self._step)
         return True, result

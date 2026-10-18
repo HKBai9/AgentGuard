@@ -56,6 +56,14 @@ DEFAULT_MAX_CALLS = 1
 # ===========================================================================
 # 参数谓词（Caveat）：约束"这张票据能做什么"
 # ===========================================================================
+def _regex_ok(pattern: str) -> bool:
+    try:
+        re.compile(pattern)
+        return True
+    except re.error:
+        return False
+
+
 @dataclass
 class Caveat:
     """票据内嵌的参数谓词。验证时逐条比对实际调用参数，违反任一条即拒绝。"""
@@ -79,6 +87,19 @@ class Caveat:
                 return True, ""
             ok = any(_glob_match(view.path, str(p)) for p in (self.value or []))
             return ok, f"路径 {view.path} 不在票据路径谓词 {(self.value or [])} 内"
+
+        if self.kind == "path_regex":
+            # 正则参数谓词（Schema 级约束的任意形态，如 ^/workspace/docs/.*\\.md$）。
+            # 语义：路径必须匹配**至少一条**正则；正则本身非法按 fail-closed 处理。
+            if not view.path:
+                return True, ""
+            for pat in self.value or []:
+                try:
+                    if re.fullmatch(str(pat), view.path):
+                        return True, ""
+                except re.error:
+                    return False, f"票据路径正则 `{pat}` 非法，按默认拒绝处理"
+            return False, f"路径 {view.path} 不匹配票据路径正则约束 {[str(p) for p in (self.value or [])][:3]}"
 
         if self.kind == "host_in":
             if not view.host:
@@ -335,6 +356,48 @@ class IssuanceDecision:
     rule_id: str = ""
 
 
+class Caretaker:
+    """看门人（Caretaker Pattern）：权能票据的调用代理。
+
+    经典 OCap 语义：票据**不直接调用工具**，而是指向一个轻量代理；
+    代理内部持有对撤销纪元（RevocationNode 链）的引用，在每次调用前
+    重查存活状态（自身与全部祖先未撤销 + 租约未过期 + 配额未耗尽 +
+    参数谓词满足），执行成功后消耗票据。
+
+    验证层（guard.evaluate 内的 authority.verify）与代理复核共同构成
+    双重检查：前者产生判定证据，后者在**判定与执行之间**再拦一次
+    （TOCTOU 防御——撤销/过期发生在判定之后的毫秒窗口内也会被抓住）。
+    """
+
+    def __init__(self, authority: "CapabilityAuthority", token: CapabilityToken) -> None:
+        self.authority = authority
+        self.token = token
+
+    @property
+    def alive(self) -> bool:
+        """票据挂载的权能节点（含全部祖先）是否仍然存活。"""
+        return self.token.node.is_alive() and not self.token.expired(self.authority._clock())
+
+    def check(self, tool: str, view: ActionView, step: int) -> list[Finding]:
+        """调用前复核（不消耗配额）。空列表 = 通过。"""
+        return self.authority.verify(self.token, tool, view, step)
+
+    def dispatch(self, tool: str, view: ActionView, step: int, executor: Callable[[], Any]):
+        """经代理执行工具。
+
+        返回 ``(ok, result, findings)``：
+          - 复核不通过 → ``(False, None, findings)``，executor 不会被调用；
+          - 执行成功 → 消耗票据（单次配额作废）后 ``(True, result, [])``。
+        executor 抛出的异常原样向外传播（此时票据不消耗）。
+        """
+        findings = self.check(tool, view, step)
+        if findings:
+            return False, None, findings
+        result = executor()
+        self.authority.consume(self.token)
+        return True, result, []
+
+
 # ===========================================================================
 # 策略引擎 + 签发者 + 看门人枢纽
 # ===========================================================================
@@ -453,12 +516,26 @@ class CapabilityAuthority:
             caveats.append(
                 Caveat("path_glob_any", pats, "只读/只写语义隔离：" + ("可写" if write else "可读") + "路径白名单")
             )
+            # 可选的正则参数谓词（与 glob 白名单**叠加**生效，只能更严）
+            regexes = list(b.file_write_regex if write else b.file_read_regex)
+            if regexes:
+                caveats.append(
+                    Caveat("path_regex", regexes, "路径正则谓词（Schema 级参数空间约束）")
+                )
             if not view.path:
                 violations.append(f"`{tool}` 未提供可审计的目标路径，拒绝签发")
-            elif not any(_glob_match(view.path, p) for p in pats):
-                violations.append(
-                    f"路径 `{view.path}` 不在{'可写' if write else '可读'}白名单内，拒绝签发"
-                )
+            else:
+                if not any(_glob_match(view.path, p) for p in pats):
+                    violations.append(
+                        f"路径 `{view.path}` 不在{'可写' if write else '可读'}白名单内，拒绝签发"
+                    )
+                if regexes and not any(
+                    re.fullmatch(str(r), view.path) for r in regexes if _regex_ok(str(r))
+                ):
+                    violations.append(
+                        f"路径 `{view.path}` 不满足路径正则约束 "
+                        f"{[str(r) for r in regexes[:3]]}，拒绝签发"
+                    )
 
         elif tool in ("web_scan", "http_get", "ssh_connect"):
             hosts = [
@@ -533,6 +610,17 @@ class CapabilityAuthority:
         """按需签发（JIT）：对模型透明，由 Agent 循环在执行前代为申请。"""
         scope = scope or self.root_scope
         self.stats["requests"] += 1
+
+        # 0) 作用域存活检查：挂在已撤销节点上的作用域不再签发任何票据
+        dead = scope.node.dead_ancestor()
+        if dead is not None:
+            return self._refuse(
+                tool,
+                step,
+                f"权能作用域已撤销：`{dead.path_str()}`（{dead.revoked_reason}），"
+                f"其下不再签发任何票据",
+                "L0-SCOPE-REVOKED",
+            )
 
         # 1) 工具白名单（显式拒绝表优先）
         td = self.baseline.check_tool(tool)

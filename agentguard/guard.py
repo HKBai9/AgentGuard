@@ -424,12 +424,32 @@ class SandboxGuard:
             else:
                 decision = Decision.BLOCK
 
-        # 隔离生效：冻结会话 + 回滚
+        # 隔离生效：冻结会话 + 撤销全部权能 + 回滚
         frozen_now = False
         if decision is Decision.ISOLATE:
             if self.config.enable_isolation:
                 self.frozen = True
                 frozen_now = True
+                # Caretaker 自动熔断：检测层确认逃逸 → 撤销会话根，
+                # 全部在飞票据 O(1) 级联失效（不依赖后续调用的冻结检查）
+                if self.config.enable_capability and self.authority.root_scope.node.is_alive():
+                    self.authority.revoke_all(
+                        "检测层确认边界逃逸：隔离会话并自动级联撤销全部权能"
+                    )
+                    self.emit(
+                        GuardEvent(
+                            kind="revoke",
+                            title="⛔ 自动熔断：检测到逃逸，已撤销全部权能",
+                            detail=(
+                                "L4 隔离判定成立，控制中心将撤销根节点标记失效："
+                                "全部在飞票据立即级联失效（Caretaker 即时撤销）"
+                            ),
+                            severity=Severity.CRITICAL,
+                            step=call.step,
+                            tool=call.tool,
+                            payload={"epoch": self.authority.registry.epoch},
+                        )
+                    )
             if action == _ACTION_RANK["isolate_and_rollback"] and self.config.enable_rollback:
                 actions = self.rollback()
                 if actions:

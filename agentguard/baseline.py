@@ -107,6 +107,9 @@ class PermissionBaseline:
         files = res.get("files", {}) or {}
         self.file_read: list[str] = list(files.get("read", []) or [])
         self.file_write: list[str] = list(files.get("write", []) or [])
+        # 可选的正则参数谓词（与 glob 白名单叠加，只能更严；用于 Schema 级参数空间约束）
+        self.file_read_regex: list[str] = [str(r) for r in (files.get("read_regex", []) or [])]
+        self.file_write_regex: list[str] = [str(r) for r in (files.get("write_regex", []) or [])]
         self.file_protected: list[dict[str, Any]] = list(files.get("protected", []) or [])
 
         cmds = res.get("commands", {}) or {}
