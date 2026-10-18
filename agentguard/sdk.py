@@ -34,6 +34,7 @@ from typing import Any, Callable, Iterable, Mapping
 
 # 注意：这里**必须**从子模块直接导入，不能 `from . import ...`。
 # sdk 会被包根的 __init__ 导入，若再从包根取符号就会形成循环导入。
+from .action import build_action
 from .guard import GuardConfig, SandboxGuard, build_guard
 from .paths import DEFAULT_CONFIG_PATH as DEFAULT_CONFIG
 from .paths import VFS_ROOT
@@ -271,11 +272,44 @@ class AgentGuard:
         return self._guard.frozen
 
     # ------------------------------------------------------- 核心拦截原语
-    def check(self, tool: str, args: dict[str, Any] | None = None, thought: str = "") -> Verdict:
-        """只做判定、不执行。用于"先问一句能不能做"的场景。"""
+    def _evaluate(
+        self,
+        tool: str,
+        args: dict[str, Any] | None = None,
+        thought: str = "",
+    ) -> tuple[Verdict, Any, Any]:
+        """判定一次调用，并在需要时 JIT 签发票据（对调用方透明）。
+
+        与 ``ToolBridge`` 保持同一套权能语义：零初始权限下没有当次签发的
+        票据就拒绝；污点状态会阻止签发票据。返回 ``(verdict, token, view)``。
+
+        ``check()`` 只判定不执行，因此签发的票据不会被消耗（TTL 自然过期）；
+        ``guard_call()`` 在真正执行成功后消耗票据（单次配额即作废）。
+        """
         self._step += 1
         call = ToolCall(tool=tool, args=args or {}, thought=thought, step=self._step)
-        verdict, _view = self._guard.evaluate(call)
+        view = build_action(tool, call.args)
+
+        token = None
+        refusal = ""
+        gc = self._guard.config
+        if gc.enabled and gc.enable_capability:
+            taint_block = ""
+            if gc.enable_taint:
+                blocked, why = self._guard.taint.blocks(tool, view)
+                taint_block = why if blocked else ""
+            decision = self._guard.authority.issue(
+                tool, view, self._step, taint_block=taint_block
+            )
+            token = decision.token
+            refusal = decision.reason
+
+        verdict, _view = self._guard.evaluate(call, token=token, view=view, refusal=refusal)
+        return verdict, token, view
+
+    def check(self, tool: str, args: dict[str, Any] | None = None, thought: str = "") -> Verdict:
+        """只做判定、不执行。用于"先问一句能不能做"的场景。"""
+        verdict, _token, _view = self._evaluate(tool, args, thought)
         return verdict
 
     def guard_call(
@@ -290,17 +324,19 @@ class AgentGuard:
         返回 ``(allowed, result)``。**这是全 SDK 的核心原语**——
         `wrap_tools` / `tool` / `wrap_openai_tools` 都建在它之上。
         """
-        verdict = self.check(tool, args, thought)
+        verdict, token, view = self._evaluate(tool, args, thought)
         if not verdict.allowed:
             return False, self._blocked_payload(tool, verdict)
 
         # 允许执行。参数以"具名"形式传入（bind_args 的产物）。
         call_args = dict(args or {})
         positional = call_args.pop("_args", None)
+        result: Any
         try:
             if positional:
-                return True, func(*positional, **call_args)
-            return True, func(**call_args)
+                result = func(*positional, **call_args)
+            else:
+                result = func(**call_args)
         except TypeError as exc:
             # 参数绑不上（多半是工具的签名与框架传来的参数不一致）。
             # 这是**调用方契约问题**，不能静默吞掉 —— 否则看起来像"被拦住了"，
@@ -310,6 +346,14 @@ class AgentGuard:
                 f"收到的参数：{sorted((args or {}).keys())}。"
                 f"请检查工具签名，或用 ToolSpec 显式描述参数。"
             ) from exc
+
+        # 执行成功后：消耗票据（单次配额作废）+ 污点标记（与 ToolBridge 一致）
+        gc = self._guard.config
+        if gc.enabled and gc.enable_capability and token is not None:
+            self._guard.authority.consume(token)
+        if gc.enabled and gc.enable_taint:
+            self._guard.taint.mark(tool, view, self._step)
+        return True, result
 
     def _blocked_payload(self, tool: str, verdict: Verdict) -> Any:
         if self.on_block == "raise":
