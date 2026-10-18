@@ -202,7 +202,7 @@ python -m streamlit run app.py
 ```powershell
 .\start_demo.ps1              # 一键修复并启动（含 Ollama）
 .\tools\ollama.ps1 -Stop      # 只停本地模型
-.\run.ps1 -Mode test          # 先确认代码本身没问题（87 项测试）
+.\run.ps1 -Mode test          # 先确认代码本身没问题（88 项测试）
 ```
 
 ### 4. 命令行实验（可复现的实验数据）
@@ -210,7 +210,7 @@ python -m streamlit run app.py
 ```powershell
 .\run.ps1 -Mode exp                # 六组对照：裸Agent / 提示词防护 / 执行层防护
 .\run.ps1 -Mode live               # 真实大模型：用例 2
-.\run.ps1 -Mode test               # 防护层判定矩阵回归测试（87 项）
+.\run.ps1 -Mode test               # 防护层判定矩阵回归测试（88 项）
 .\run.ps1 -Mode ui                 # 界面无头冒烟测试
 
 # 或直接调用 Python
@@ -218,9 +218,10 @@ python experiments/run_experiment.py                    # 六组对照，秒级
 python experiments/run_experiment.py --live --case 2    # 真实大模型
 python experiments/run_experiment.py --case 5,6         # 新增：污点注入 / 委派衰减
 python experiments/run_capability_demo.py               # ★ 权能生命周期 16 场景攻击面演示
+python experiments/run_redteam_validation.py             # ★ 渗透验证基准（Confused Deputy/延迟劫持/污点穿透 + 撤销吞吐）
 python experiments/run_adversarial.py                   # ★ 红队：提示词防护能否被绕过
 python experiments/run_bypass_demo.py                   # ★ 工具名白名单能否被绕过
-python -m pytest                                        # 87 项判定矩阵
+python -m pytest                                        # 88 项判定矩阵
 python tools/collect_evidence.py                        # 汇总证据到 experiments/results/DEMO/
 ```
 
@@ -370,12 +371,13 @@ python tools/collect_evidence.py                        # 汇总证据到 experi
 ├── experiments/
 │   ├── run_experiment.py        六组对照实验运行器（含用例 5 污点 / 用例 6 委派衰减）
 │   ├── run_capability_demo.py   ★ 权能生命周期 16 场景攻击面演示
+│   └── run_redteam_validation.py ★ 渗透验证基准（Confused Deputy / 延迟劫持 / 污点穿透 + 撤销吞吐）
 │   ├── run_adversarial.py       红队：提示词防护能否被绕过
 │   └── run_bypass_demo.py       绕过对照：工具名白名单 vs 资源级判定
 ├── examples/quickstart.py       开发者接入示例（不接防护 vs 接入防护）
 ├── tests/
 │   ├── test_guard.py            四层防护判定矩阵回归测试（34 项）
-│   ├── test_capability.py       ★ L0/LT 判定矩阵回归测试（32 项）
+│   ├── test_capability.py       ★ L0/LT 判定矩阵回归测试（33 项，含红队套件）
 │   └── test_sdk.py              SDK / CLI 接口测试（21 项）
 ├── docs/                        原理解析 / 设计 / 证据 / 接入指南 / 产品化 / 申报书素材
 │   └── CAPABILITY.md            ★ L0/LT 设计文档（理论对照与工程边界）

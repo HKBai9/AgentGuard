@@ -614,6 +614,20 @@ def test_sdk_guard_call_routes_through_capability():
     )
     assert not blocked
     assert "未执行" in str(msg) or "阻断" in str(msg) or "拒" in str(msg)
+
+
+def test_redteam_validation_suite():
+    """渗透验证基准（阶段三 + 阶段二撤销基准）全部通过。
+
+    覆盖：Confused Deputy 参数约束强拦 / 延迟劫持（QUOTA 与 TTL 确定性 25/25）/
+    污点穿透（命令执行、数据外发、动态恢复）/ Caretaker 级联撤销吞吐。
+    """
+    from experiments.run_redteam_validation import validate_all
+
+    outcomes = validate_all()
+    assert len(outcomes) >= 11, "红队场景数量不足"
+    failed = [r["scenario"] for r in outcomes if not r["pass"]]
+    assert not failed, f"红队验证未通过：{failed}"
 # ===========================================================================
 # E. 与旧四层的协同（回归保障）
 # ===========================================================================

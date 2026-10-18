@@ -180,7 +180,7 @@ Agent 摄入 `UNTRUSTED` 内容 ⇒ 上下文"已污染"（观察结果尾部附
 
 ## 四、实验证据
 
-### 4.1 判定矩阵回归（`python -m pytest -q`，87 项 = 34 四层 + 32 L0/LT + 21 SDK）
+### 4.1 判定矩阵回归（`python -m pytest -q`，88 项 = 34 四层 + 33 L0/LT（含红队套件）+ 21 SDK）
 
 L0/LT 共 32 项覆盖：零初始权限、TTL 过期、单次配额重放、步骤绑定、
 HMAC 防伪造（票据/谓词/作用域三路）、衰减与传递衰减、
@@ -227,6 +227,17 @@ SDK 路径权能闭环。
 1. HMAC 密钥与会话同进程（单进程演示环境成立）；
    跨进程/分布式部署应替换为标准 Macaroons/Biscuit 实现——
    接口（`issue/verify/consume/derive_scope/revoke`）已按此边界设计；
+1b. **工具注册层强制点**：当前为进程内的两处真实入口——
+   `ToolBridge.execute()`（演示 Agent 唯一控制点）与 SDK 注册层
+   （`guard_tools` / `guard_tool` / `guard_function` / `wrap_tools` 装饰器，
+   开发者注册的任何工具不持有效票据即拒绝）。**MCP Server 协议适配器
+   未实现**——接入路线是在 MCP 工具分发入口套同一 SDK 中间件（见 docs/SDK.md），
+   属外部协议工程，不影响本仓防护语义；
+1c. **签发时机**：规范设想的"Agent 生成 tool_call 意图前先向 Gatekeeper 申请"
+   被实现为"执行点的透明 JIT 签发"——Gatekeeper（CapabilityAuthority）与
+   确定性规则（含污点标记）完全一致，但申请由工具桥/SDK 代劳。
+   理由：模型无需学会票据协议，对照组/实验组"唯一变量"实验设计不被破坏；
+   需要"意图前预申请"的外部集成可直接调用 `authority.issue()`（接口已暴露）；
 2. 污点追踪是**来源级 + 上下文级**的轻量版，不追踪逐字段数据流
    （完整 IFC 需语言级标签传播）；
 3. 撤销注册表为内存态（进程重启即清空）——演示环境适用，
@@ -237,7 +248,8 @@ SDK 路径权能闭环。
 ## 六、复现指令
 
 ```powershell
-python -m pytest -q                                  # 87 项判定矩阵
+python -m pytest -q                                  # 88 项判定矩阵
+python experiments/run_redteam_validation.py          # 渗透验证基准（11 场景）
 python experiments/run_capability_demo.py            # 权能生命周期 16 场景
 python experiments/run_experiment.py                 # 六组对照（脚本回放，秒级）
 python experiments/run_experiment.py --case 5,6      # 只看新增两用例
