@@ -71,6 +71,8 @@ tools:
     - write_file        # 写文件（受可写路径白名单约束）
     - run_command       # 执行命令（受命令白名单约束）
     - ssh_connect       # 连接主机（受网络白名单约束）
+    - delegate_task     # 委派子 Agent（子权能 = 父权能的严格子集，L0 衰减）
+    - sanitize_content  # 结构化去污（LT 层配套：清除污点状态的确定性通道）
   # 显式拒绝表：给出更明确的拒绝理由，便于审计与答辩演示
   deny:
     - name: exfiltrate
@@ -128,6 +130,13 @@ resources:
     write:
       - "/sandbox_fake/workspace/reports/**"
       - "/sandbox_fake/workspace/tmp/**"
+    # 可选：路径正则谓词（参数空间约束，与上面 glob 白名单【叠加】生效、只能更严）
+    # 签发给 Agent 的 read_file/write_file 票据会把它们硬编码进去，
+    # 例：'^/workspace/project/docs/.*\.md$'（本演示用下面的宽松等价配置）
+    read_regex:
+      - '^/sandbox_fake/(workspace|targets|public)/.*$'
+    write_regex:
+      - '^/sandbox_fake/workspace/(reports|tmp)/.*$'
     # 显式保护的敏感路径（命中即高危：凭证/私钥/系统配置）
     protected:
       - pattern: "**/.ssh/**"
@@ -201,6 +210,41 @@ resources:
       - { pattern: 'bash\s+-i\s*>&', reason: "交互式反弹 shell" }
       - { pattern: '/dev/tcp/', reason: "bash 内建 TCP 连接，用于绕过网络管控" }
       - { pattern: '--dump|mysqldump', reason: "数据库导出" }
+
+# -----------------------------------------------------------------------------
+# 2b. 动态权能（L0：Just-In-Time Ephemeral Capabilities）
+# -----------------------------------------------------------------------------
+#  Agent 启动时零初始权限；每次工具调用前由确定性策略引擎按需签发
+#  微租约票据（TTL + 单次配额 + Trace/步骤绑定 + 参数谓词）。
+capability:
+  ttl_seconds: 30      # 票据生命周期：30 秒后自动作废
+  max_calls: 1         # 调用配额：单次调用即作废（天然防重放）
+
+# -----------------------------------------------------------------------------
+# 2c. 污点感知（LT：Taint-Aware Downgrading / 轻量信息流控制）
+# -----------------------------------------------------------------------------
+#  按输入来源分级：任务声明范围内 = TASK_SCOPE；范围外外部内容 = UNTRUSTED。
+#  摄入 UNTRUSTED 后上下文转为"已污染"，高危动作被拒绝签发权能，
+#  直至 sanitize_content 去污或人工核准。
+taint:
+  # 任务声明范围内的可信输入源（不会造成污染）
+  task_scope_sources:
+    - "/sandbox_fake/targets/**"       # 靶站资料
+    - "/sandbox_fake/workspace/**"     # Agent 自身工作区
+  # 任务范围外的外部内容（摄入即污染；未声明来源默认不可信）
+  untrusted_sources:
+    - "/sandbox_fake/public/**"        # 第三方公开资料（可能携带注入）
+  # 污染状态下拒绝签发权能的高危工具
+  blocked_tools_when_tainted:
+    - run_command
+    - ssh_connect
+    - exfiltrate
+  # 交付物目录：污染状态下禁止写入（防止不可信内容流入最终产物）
+  deliverable_paths:
+    - "/sandbox_fake/workspace/reports/**"
+  # 隔离区：污染状态下仍可写（暂存待净化的内容）
+  quarantine_paths:
+    - "/sandbox_fake/workspace/tmp/**"
 
 # -----------------------------------------------------------------------------
 # 3. 时序行为链规则（运行时监控 / Runtime Sequence Rules）

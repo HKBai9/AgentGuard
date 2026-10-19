@@ -35,6 +35,8 @@ from typing import Any, Callable, Iterable, Mapping, get_type_hints
 
 # 注意：这里**必须**从子模块直接导入，不能 `from . import ...`。
 # sdk 会被包根的 __init__ 导入，若再从包根取符号就会形成循环导入。
+from .action import build_action
+from .capability import Caretaker
 from .guard import GuardConfig, SandboxGuard, build_guard
 from .paths import DEFAULT_CONFIG_PATH as DEFAULT_CONFIG
 from .paths import VFS_ROOT
@@ -293,16 +295,46 @@ class AgentGuard:
         return self._guard.frozen
 
     # ------------------------------------------------------- 核心拦截原语
-    def check(self, tool: str, args: dict[str, Any] | None = None, thought: str = "") -> Verdict:
-        """只做判定、不执行。用于"先问一句能不能做"的场景。"""
-        _call, verdict = self._evaluate(tool, args, thought)
-        return verdict
+    def _evaluate(
+        self,
+        tool: str,
+        args: dict[str, Any] | None = None,
+        thought: str = "",
+    ) -> tuple[ToolCall, Verdict, Any, Any]:
+        """判定一次调用，并在需要时 JIT 签发票据（对调用方透明）。
 
-    def _evaluate(self, tool, args, thought):
+        与 ``ToolBridge`` 保持同一套权能语义：零初始权限下没有当次签发的
+        票据就拒绝；污点状态会阻止签发票据。返回
+        ``(call, verdict, token, view)``，便于执行后把真实结果回填到同一条记录。
+
+        ``check()`` 只判定不执行，因此签发的票据不会被消耗（TTL 自然过期）；
+        ``guard_call()`` 在真正执行成功后消耗票据（单次配额即作废）。
+        """
         self._step += 1
         call = ToolCall(tool=tool, args=dict(args or {}), thought=thought, step=self._step)
-        verdict, _view = self._guard.evaluate(call)
-        return call, verdict
+        view = build_action(tool, call.args, self.vfs_root)
+
+        token = None
+        refusal = ""
+        gc = self._guard.config
+        if gc.enabled and gc.enable_capability:
+            taint_block = ""
+            if gc.enable_taint:
+                blocked, why = self._guard.taint.blocks(tool, view)
+                taint_block = why if blocked else ""
+            decision = self._guard.authority.issue(
+                tool, view, self._step, taint_block=taint_block
+            )
+            token = decision.token
+            refusal = decision.reason
+
+        verdict, _view = self._guard.evaluate(call, token=token, view=view, refusal=refusal)
+        return call, verdict, token, view
+
+    def check(self, tool: str, args: dict[str, Any] | None = None, thought: str = "") -> Verdict:
+        """只做判定、不执行。用于"先问一句能不能做"的场景。"""
+        _call, verdict, _token, _view = self._evaluate(tool, args, thought)
+        return verdict
 
     @staticmethod
     def _bound_call(func, args, kwargs):
@@ -336,26 +368,61 @@ class AgentGuard:
 
     def _invoke(self, tool, func, args, kwargs, thought=""):
         bound, inspected = self._bound_call(func, args, kwargs)
-        call, verdict = self._evaluate(tool, inspected, thought)
+        call, verdict, token, view = self._evaluate(tool, inspected, thought)
         if not verdict.allowed:
             return False, self._blocked_payload(tool, verdict)
-        try:
+
+        gc = self._guard.config
+
+        def execute_bound():
             value = func(*bound.args, **bound.kwargs)
             if inspect.isawaitable(value):
                 if inspect.iscoroutine(value):
                     value.close()
                 raise TypeError("异步工具请使用 await aguard_call 或异步包装器")
+            return value
+
+        try:
+            if gc.enabled and gc.enable_capability and token is not None:
+                caretaker = Caretaker(self._guard.authority, token)
+                ok_exec, value, late_findings = caretaker.dispatch(
+                    tool, view, self._step, executor=execute_bound
+                )
+                if not ok_exec:
+                    verdict.findings.extend(late_findings)
+                    verdict.decision = Decision.BLOCK
+                    return False, self._blocked_payload(tool, verdict)
+            else:
+                value = execute_bound()
         except BaseException as exc:
             self._outcome(call, error=exc)
             raise
+
+        if (
+            gc.enabled
+            and gc.enable_taint
+            and (not isinstance(value, ToolResult) or value.ok)
+        ):
+            self._guard.taint.mark(tool, view, self._step, observation=str(value))
         self._outcome(call, value=value)
         return True, value
 
     async def _ainvoke(self, tool, func, args, kwargs, thought=""):
         bound, inspected = self._bound_call(func, args, kwargs)
-        call, verdict = self._evaluate(tool, inspected, thought)
+        call, verdict, token, view = self._evaluate(tool, inspected, thought)
         if not verdict.allowed:
             return False, self._blocked_payload(tool, verdict)
+
+        gc = self._guard.config
+        if gc.enabled and gc.enable_capability and token is not None:
+            late_findings = Caretaker(self._guard.authority, token).check(
+                tool, view, self._step
+            )
+            if late_findings:
+                verdict.findings.extend(late_findings)
+                verdict.decision = Decision.BLOCK
+                return False, self._blocked_payload(tool, verdict)
+
         try:
             value = func(*bound.args, **bound.kwargs)
             if inspect.isawaitable(value):
@@ -363,6 +430,15 @@ class AgentGuard:
         except BaseException as exc:
             self._outcome(call, error=exc)
             raise
+
+        if gc.enabled and gc.enable_capability and token is not None:
+            self._guard.authority.consume(token)
+        if (
+            gc.enabled
+            and gc.enable_taint
+            and (not isinstance(value, ToolResult) or value.ok)
+        ):
+            self._guard.taint.mark(tool, view, self._step, observation=str(value))
         self._outcome(call, value=value)
         return True, value
 

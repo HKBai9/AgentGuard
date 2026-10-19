@@ -164,8 +164,17 @@ def _load(policy: str, *, audit_only: bool = False):
     if not os.path.isfile(baseline_path):
         print(f"[×] 找不到策略文件：{baseline_path}", file=sys.stderr)
         return None
-    guard = build_guard(config_path=baseline_path,
-                        guard_config=GuardConfig(enabled=True, enable_rollback=not audit_only))
+    guard = build_guard(
+        config_path=baseline_path,
+        guard_config=GuardConfig(
+            enabled=True,
+            enable_rollback=not audit_only,
+            # Offline logs contain no live, trace-bound capability token and
+            # replay no content from which to reconstruct taint state.
+            enable_capability=not audit_only,
+            enable_taint=not audit_only,
+        ),
+    )
     guard.baseline.cfg["_vfs_root"] = VFS_ROOT
     return guard
 

@@ -56,8 +56,10 @@ class Decision(str, Enum):
 class Layer(str, Enum):
     """判定发生在哪一层，用于答辩展示"检测到在哪一层"。"""
 
+    CAPABILITY = "L0-动态权能"     # JIT 权能票据：签发/验证/撤销（预防）
     BASELINE = "L1-权限基线"       # 工具/资源白名单
     INTENT = "L2-语义意图"         # Thought 语义漂移与风险意图
+    TAINT = "LT-污点感知"          # 信息流控制：污染上下文动态降权
     RUNTIME = "L3-行为运行时"      # 动作参数与时序行为链
     RESPONSE = "L4-隔离阻断"       # 应急响应策略
 
@@ -76,6 +78,8 @@ class EscapeType(str, Enum):
     DANGEROUS_COMMAND = "高危命令执行"
     INTENT_DRIFT = "目标偏离（隐性逃逸）"
     SEQUENCE_ANOMALY = "可疑时序行为链"
+    CAPABILITY_VIOLATION = "权能违规（无票据/过期/超配额/重放/参数越界）"
+    TAINT_BLOCKED = "污点降权拦截（不可信输入触发权限收缩）"
 
 
 @dataclass

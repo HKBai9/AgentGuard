@@ -183,6 +183,8 @@ def test_sequence_credential_then_internal_connection():
     cfg = GuardConfig(enabled=True, enable_intent=False)  # 只留基线与行为层
     guard = build_guard(guard_config=cfg, session_id="seq-test")
     guard.baseline.file_read.append("/sandbox_fake/.ssh/**")
+    # 同步放宽正则谓词（v1.1 起 read 票据内嵌 glob+regex 双重路径约束）
+    guard.baseline.file_read_regex = []
     _drop = (".ssh", "id_rsa", "id_ed25519")
     guard.baseline.file_protected = [
         r
@@ -241,9 +243,18 @@ def test_rollback_removes_written_file():
 
 
 def test_disabled_layers_allow_action():
-    """逐层关闭时，对应层的拦截应消失（证明各层独立生效）。"""
+    """逐层关闭时，对应层的拦截应消失（证明各层独立生效）。
+
+    v1.1 起防护层含 L0 动态权能 / LT 污点两个新层：全部关闭后动作放行，
+    与旧版行为一致（L0/LT 各自的独立拦截能力见 test_capability.py）。
+    """
     bridge = make_bridge(
-        enabled=True, enable_intent=False, enable_baseline=False, enable_runtime=False
+        enabled=True,
+        enable_intent=False,
+        enable_baseline=False,
+        enable_runtime=False,
+        enable_capability=False,
+        enable_taint=False,
     )
     _r, verdict = bridge.execute(
         "read_file", {"path": "/sandbox_fake/.ssh/id_rsa"}, thought=ESCAPE_THOUGHT, step=1,
@@ -401,7 +412,14 @@ def test_vfs_ls_lists_virtual_filesystem():
 
 def test_protected_path_write_is_refused_by_tool_layer():
     """第二道防线：即使基线被放宽，受保护路径也不写入真实内容。"""
-    cfg = GuardConfig(enabled=True, enable_baseline=False, enable_intent=False, enable_runtime=False)
+    cfg = GuardConfig(
+        enabled=True,
+        enable_baseline=False,
+        enable_intent=False,
+        enable_runtime=False,
+        enable_capability=False,
+        enable_taint=False,
+    )
     guard = build_guard(guard_config=cfg, session_id="wtest")
     bridge = ToolBridge(guard, vfs_root=VFS_ROOT)
     result, verdict = bridge.execute(

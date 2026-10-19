@@ -1,6 +1,7 @@
-# 设计文档：四层防护的判定模型与关键权衡
+# 设计文档：多层防护的判定模型与关键权衡
 
-> 配套阅读：`README.md`（概览）、`docs/CLAIMS.md`（可复现实验数据）
+> 配套阅读：`README.md`（概览）、`docs/CLAIMS.md`（可复现实验数据）、
+> `docs/CAPABILITY.md`（L0 动态权能 / LT 污点感知的设计与理论对照）
 > 代码：`agentguard/`
 
 本文回答评委最可能追问的几个问题：**每一层凭什么判定？如何避免误报？
@@ -20,12 +21,13 @@ ActionView
 └── 备注：notes（归一化过程的可解释记录）
 ```
 
-四层各自对该视图产出若干 `Finding`，最终由 L4 汇总：
+各层对该视图产出若干 `Finding`，最终由 L4 汇总（v1.1 起含 L0/LT）：
 
 ```
-findings = L2(thought) + L1(action) + L3(action, history)
+findings = L0(token, action) + LT(taint_state, action) + L2(thought) + L1(action) + L3(action, history)
 blocking = [f for f in findings if f.severity >= HIGH]      # 阻断门槛
 decision = ALLOW         if not blocking
+         | BLOCK         if blocking 仅来自 L0/LT（动态降权：只拦本次，不冻结）
          | ISOLATE       if policy(blocking.severity) >= isolate_session
          | BLOCK         otherwise
 ```

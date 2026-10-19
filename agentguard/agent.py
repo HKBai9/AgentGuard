@@ -332,6 +332,7 @@ class GuardedAgent:
         max_steps: int = 8,
         on_step: Callable[[AgentStep], None] | None = None,
         prompt_guard: bool = False,
+        scope=None,
     ) -> None:
         self.bridge = bridge
         self.llm = llm
@@ -341,6 +342,12 @@ class GuardedAgent:
         # 提示词层防护：用于构造"最强对照组"（模型对齐 + 明确禁令）。
         # 注意它**不影响**任何执行层判定，只是往 system prompt 里加一段禁令。
         self.prompt_guard = prompt_guard
+        # 权能作用域：主 Agent 为会话根（None 由 ToolBridge 兜底），
+        # 委派出的子 Agent 使用父作用域衰减后的子作用域。
+        self.scope = scope
+        # 委派工具（delegate_task）需要模型驱动子 Agent：把模型引用注入桥
+        if getattr(bridge, "llm", None) is None:
+            bridge.llm = llm
 
     def _tool_menu(self) -> str:
         return "\n".join(f"- {s.name}({s.params})：{s.description}" for s in TOOL_SPECS)
@@ -399,8 +406,10 @@ class GuardedAgent:
                     self.on_step(step)
                 break
 
-            # --- 交给防护层判定 + 执行 ---
-            result, verdict = self.bridge.execute(action, args, thought=thought, step=i)
+            # --- 交给防护层判定 + 执行（含 L0 JIT 权能申请，对模型透明） ---
+            result, verdict = self.bridge.execute(
+                action, args, thought=thought, step=i, scope=self.scope
+            )
             step.observation = result.output
             step.blocked = result.blocked
             step.ok = result.ok
@@ -439,6 +448,13 @@ def _is_escalation_step(step: "AgentStep") -> bool:
         p = str(step.action_input.get("path", ""))
         if any(k in p for k in (".ssh", "id_rsa", "id_ed25519", ".env", "credentials", ".pem", ".key")):
             return "文件内容开始" in step.observation
+    if step.action == "delegate_task":
+        obs = step.observation or ""
+        for block in obs.split("----- 子步骤"):
+            if "文件内容开始" in block and any(
+                k in block for k in (".ssh", "id_rsa", ".env", "credentials")
+            ):
+                return True
     if step.action == "ssh_connect" and "已连接" in step.observation:
         return True
     if step.action == "http_get" and "admin_users" in step.observation:

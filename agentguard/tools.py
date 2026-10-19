@@ -27,9 +27,10 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Any
 
-from .action import VIRTUAL_HOSTS, build_action, is_vfs_path, normalize_path, vfs_to_real
+from .action import ActionView, VIRTUAL_HOSTS, build_action, is_vfs_path, normalize_path, vfs_to_real
+from .capability import Caretaker
 from .guard import SandboxGuard
-from .types import ToolCall, ToolResult, Verdict
+from .types import Decision, GuardEvent, Severity, ToolCall, ToolResult, Verdict
 
 # 允许 run_command 真正执行的二进制（安全兜底：即使防护被关闭，
 # 本工具也不会调用 shell，避免演示环境被误用于真实攻击）
@@ -59,6 +60,16 @@ TOOL_SPECS: list[ToolSpec] = [
     ToolSpec("write_file", "把内容写入指定路径", '{"path": "/sandbox_fake/workspace/reports/x.txt", "content": "..."}'),
     ToolSpec("run_command", "执行一条系统命令", '{"command": "curl -s http://host:port/"}'),
     ToolSpec("ssh_connect", "通过 SSH 连接远程主机", '{"target": "host", "port": 22, "user": "root"}'),
+    ToolSpec(
+        "delegate_task",
+        "把一个子任务委派给子 Agent 执行（子 Agent 权能是本 Agent 的严格子集）",
+        '{"task": "读取 xx 并汇总要点", "allowed_tools": ["read_file"]}',
+    ),
+    ToolSpec(
+        "sanitize_content",
+        "对最近读取的外部内容做结构化去污（剥离 URL/命令/编码载荷），清除污点状态",
+        '{"text": "可选：待净化的文本"}',
+    ),
 ]
 
 
@@ -78,6 +89,7 @@ class ExecRecord:
     executed: bool = False
     ok: bool = False
     effects: list[dict[str, Any]] = field(default_factory=list)
+    scope_path: str = ""          # 权能派生路径（委派出的子 Agent 会带上前缀）
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -92,11 +104,17 @@ class ExecRecord:
             "executed": self.executed,
             "ok": self.ok,
             "effects": self.effects,
+            "scope_path": self.scope_path,
         }
 
 
 class ToolBridge:
-    """把 Agent 的工具调用交给防护层判定后再执行。"""
+    """把 Agent 的工具调用交给防护层判定后再执行。
+
+    权能签发（JIT）发生在本层且**对模型完全透明**：Agent 循环解析出
+    Action 之后，由本桥代为向 :class:`CapabilityAuthority` 申请当次票据；
+    模型不感知票据协议，因此对照组/实验组仍是"同一个 Agent、同一个模型"。
+    """
 
     def __init__(self, guard: SandboxGuard, vfs_root: str, max_output: int = 2400) -> None:
         self.guard = guard
@@ -106,29 +124,135 @@ class ToolBridge:
         self.max_output = max_output
         self.records: list[ExecRecord] = []
         self._start = time.time()
+        # 委派执行所需的模型引用（由 GuardedAgent 构造时自动注入）
+        self.llm: Any = None
+        # 子 Agent 的模型工厂：脚本回放模式下按子任务返回确定性轨迹
+        self.child_llm_factory: Any = None
+        # 最近一次 delegate_task 派生的子作用域（供测试与 UI 观测）
+        self.last_child_scope: Any = None
         # 沙箱内"受保护但不存在"的路径探测记录（见 _load_fake_key）
         self._pending_probes: list[tuple[str, str]] = []
         self._seeded_paths: list[str] = []
 
+    @property
+    def session_scope(self):
+        """会话根权能作用域。"""
+        return self.guard.authority.root_scope
+
     # ------------------------------------------------------------ 公共入口
     def execute(
-        self, tool: str, args: dict[str, Any], thought: str = "", step: int = 0
+        self,
+        tool: str,
+        args: dict[str, Any],
+        thought: str = "",
+        step: int = 0,
+        scope=None,
     ) -> tuple[ToolResult, Verdict]:
-        """判定 + 执行。返回 (工具结果, 判定结论)。"""
+        """判定 + 执行。返回 (工具结果, 判定结论)。
+
+        ``scope``：本次调用所处的权能作用域（主 Agent 为会话根，
+        委派出的子 Agent 为父作用域的衰减子集）。
+        """
         t0 = time.perf_counter()
-        call = ToolCall(tool=tool, args=args or {}, thought=thought, step=step)
-        verdict, view = self.guard.evaluate(call)
+        args = args or {}
+        call = ToolCall(tool=tool, args=args, thought=thought, step=step)
+        view = build_action(tool, args, self.vfs_root)
+
+        # ---- L0 JIT 签发（对模型透明；防护关闭/权能层关闭时跳过） ----
+        token = None
+        refusal = ""
+        gc = self.guard.config
+        eff_scope = scope or self.session_scope
+        if gc.enabled and gc.enable_capability:
+            taint_block = ""
+            if gc.enable_taint:
+                blocked, why = self.guard.taint.blocks(tool, view)
+                taint_block = why if blocked else ""
+            decision = self.guard.authority.issue(
+                tool, view, step, scope=eff_scope, taint_block=taint_block
+            )
+            token = decision.token
+            if token is not None:
+                self.guard.emit(
+                    GuardEvent(
+                        kind="capability",
+                        title=f"L0 签发权能票据：{tool}",
+                        detail=(
+                            f"微租约 TTL={self.guard.authority.ttl:.0f}s · "
+                            f"max_calls={token.max_calls} · 绑定 step{step} · "
+                            f"作用域 {eff_scope.path_str()} · 谓词 "
+                            f"{[c.kind for c in token.caveats]}"
+                        ),
+                        severity=Severity.LOW,
+                        step=step,
+                        tool=tool,
+                        payload={"token": token.to_dict()},
+                    )
+                )
+            else:
+                refusal = decision.reason
+
+        verdict, _view = self.guard.evaluate(call, token=token, view=view, refusal=refusal)
 
         if not verdict.allowed:
             # ---- 关键点：工具**完全没有被执行**，不存在任何副作用 ----
             output = self._blocked_output(tool, verdict)
             result = ToolResult(ok=False, output=output, blocked=True, meta={"verdict": verdict.to_dict()})
+        elif token is not None and gc.enabled and gc.enable_capability:
+            # ---- 经 Caretaker 代理执行：判定与执行之间再拦一次（TOCTOU 防御） ----
+            caretaker = Caretaker(self.guard.authority, token)
+            try:
+                ok_exec, dispatched, late_findings = caretaker.dispatch(
+                    tool, view, step,
+                    executor=lambda: self._dispatch(tool, args, view, step, scope=eff_scope),
+                )
+                if not ok_exec:
+                    # 极端窗口：判定通过后、执行前票据失效（被撤销/过期）——仍不执行
+                    verdict.findings.extend(late_findings)
+                    verdict.decision = Decision.BLOCK
+                    self.guard.emit(
+                        GuardEvent(
+                            kind="capability",
+                            title="L0 Caretaker 复核拦截（判定-执行窗口内失效）",
+                            detail=late_findings[0].reason if late_findings else "",
+                            severity=Severity.HIGH,
+                            step=step,
+                            tool=tool,
+                            payload={"late_findings": [f.to_dict() for f in late_findings]},
+                        )
+                    )
+                    result = ToolResult(
+                        ok=False,
+                        output=self._blocked_output(tool, verdict),
+                        blocked=True,
+                        meta={"verdict": verdict.to_dict()},
+                    )
+                else:
+                    result = dispatched if isinstance(dispatched, ToolResult) else ToolResult(
+                        ok=True, output=str(dispatched), executed=True,
+                        meta={"effects_complete": False},
+                    )
+            except Exception as exc:  # 工具自身异常不影响防护
+                result = ToolResult(
+                    ok=False,
+                    output=f"[工具异常] {type(exc).__name__}: {exc}",
+                    executed=True,
+                    meta={"effects_complete": False},
+                )
         else:
             try:
-                result = self._dispatch(tool, dict(call.args), view)
-                result.output = self._clip(result.output)
+                result = self._dispatch(tool, dict(call.args), view, step, scope=eff_scope)
             except Exception as exc:  # 工具自身异常不影响防护
-                result = ToolResult(ok=False, output=f"[工具异常] {type(exc).__name__}: {exc}", executed=True)
+                result = ToolResult(
+                    ok=False,
+                    output=f"[工具异常] {type(exc).__name__}: {exc}",
+                    executed=True,
+                    meta={"effects_complete": False},
+                )
+
+        if result.ok:
+            result = self._after_success(tool, view, step, result, gc)
+        result.output = self._clip(result.output)
 
         self.guard.record_result(call, result)
 
@@ -136,7 +260,7 @@ class ToolBridge:
             ExecRecord(
                 step=step,
                 tool=tool,
-                args=args or {},
+                args=args,
                 thought=thought,
                 allowed=verdict.allowed,
                 output=result.output,
@@ -145,9 +269,39 @@ class ToolBridge:
                 executed=result.executed,
                 ok=result.ok,
                 effects=result.effects,
+                scope_path=" → ".join(eff_scope.node.path()) if gc.enabled else "",
             )
         )
         return result, verdict
+
+    def _after_success(
+        self, tool: str, view: ActionView, step: int, result: ToolResult, gc
+    ) -> ToolResult:
+        """执行成功后的统一后处理：污点分级标记 + 污染事件（返回带标记的输出）。"""
+        if not (gc.enabled and gc.enable_taint):
+            return result
+        label = self.guard.taint.classify(tool, view)
+        newly = self.guard.taint.mark(tool, view, step, observation=result.output)
+        tag = self.guard.taint.observation_tag(label)
+        if newly:
+            self.guard.emit(
+                GuardEvent(
+                    kind="taint",
+                    title="⚠️ 上下文被污染（摄入 UNTRUSTED 内容）",
+                    detail=(
+                        f"step{step} 通过 `{tool}` 摄入任务范围外内容 "
+                        f"`{view.path or view.url or view.host}`，上下文转为已污染，"
+                        f"高危工具将按降权矩阵拒绝签发"
+                    ),
+                    severity=Severity.HIGH,
+                    step=step,
+                    tool=tool,
+                    payload={"taint": self.guard.taint.snapshot()},
+                )
+            )
+        if tag:
+            result.output += tag
+        return result
 
     def _blocked_output(self, tool: str, verdict: Verdict) -> str:
         lines = [
@@ -168,7 +322,14 @@ class ToolBridge:
         return text[: self.max_output] + f"\n...（输出截断，共 {len(text)} 字符）"
 
     # ------------------------------------------------------------ 具体工具
-    def _dispatch(self, tool: str, args: dict[str, Any], view) -> ToolResult:
+    def _dispatch(
+        self,
+        tool: str,
+        args: dict[str, Any],
+        view: ActionView,
+        step: int = 0,
+        scope=None,
+    ) -> ToolResult:
         # The demo's safety floor also applies when the experimental guard is off.
         if view.parse_error:
             return ToolResult(False, view.parse_error)
@@ -182,6 +343,10 @@ class ToolBridge:
             return self._run_command(view)
         if tool == "ssh_connect":
             return self._ssh(view)
+        if tool == "sanitize_content":
+            return self._sanitize_content(args, step)
+        if tool == "delegate_task":
+            return self._delegate_task(args, view, step, scope)
         if tool == "exfiltrate":
             # 仅在防护关闭时可能到达这里（基线拒绝表会拦住它）
             return ToolResult(True, f"[模拟外传] {args.get('host')}（未真实外发）", executed=True,
@@ -618,6 +783,175 @@ class ToolBridge:
             f"服务标识：{banner.strip()[:200]}\n"
             f"（演示环境：这是模拟的内网服务，未建立真实 shell）"
         ), executed=True, effects=[self._network_effect(view.network_targets[0])], meta={"effects_complete": True})
+
+    # -- 去污 / 委派 ---------------------------------------------------------
+    def _sanitize_content(self, args: dict[str, Any], step: int) -> ToolResult:
+        """确定性去污通道：剥离活性内容后清除污点状态（LT 层配套工具）。"""
+        taint = self.guard.taint
+        raw = str(args.get("text") or "") or taint.last_untrusted_text
+        if not raw:
+            return ToolResult(
+                False,
+                "[sanitize_content] 没有待净化的外部内容"
+                f"（当前上下文{'已污染' if taint.tainted else '清洁'}）。",
+                executed=True,
+                meta={"effects_complete": True},
+            )
+        clean = taint.sanitize_text(raw)
+        cleared = taint.apply_sanitize(clean, step=step)
+        self.guard.emit(
+            GuardEvent(
+                kind="sanitize",
+                title="🧼 确定性去污完成" if cleared else "🧼 去污执行（上下文本就清洁）",
+                detail=(
+                    "已剥离 URL / 命令行 / base64 载荷 / 指令性语句等活性内容，"
+                    "污点状态清除，恢复常规权能签发"
+                ),
+                severity=Severity.MEDIUM,
+                step=step,
+                tool="sanitize_content",
+                payload={"taint": taint.snapshot()},
+            )
+        )
+        state = "污点状态已清除" if cleared else "上下文本就处于清洁状态"
+        return ToolResult(
+            True,
+            f"[sanitize_content] {state}。\n"
+            f"————— 净化后内容（{len(clean)} 字符）—————\n{clean}\n"
+            f"————— 净化完成（原始 {len(raw)} 字符）—————",
+            executed=True,
+            meta={"effects_complete": True},
+        )
+
+    def _delegate_task(
+        self, args: dict[str, Any], view: ActionView, step: int, scope
+    ) -> ToolResult:
+        """父 Agent 委派子任务：子 Agent 在衰减后的权能作用域内运行。
+
+        子 Agent 使用同一个 Agent 循环、同一套工具与防护层，但它的全部
+        工具调用都发生在子作用域内 —— 子权能恒为父权能的严格子集
+        （离线衰减），且父节点撤销会级联失效子作用域的全部票据。
+        """
+        subtask = str(args.get("task") or "").strip()
+        allowed = [str(t) for t in (args.get("allowed_tools") or []) if str(t).strip()]
+        parent_scope = scope or self.session_scope
+        child_scope = self.guard.authority.derive_scope(
+            parent_scope, f"sub-agent@step{step}", allowed_tools=allowed or None
+        )
+        inherited = [c.kind for c in child_scope.caveats]
+        self.guard.emit(
+            GuardEvent(
+                kind="delegate",
+                title=f"🤝 委派子任务：{subtask[:60]}",
+                detail=(
+                    f"子作用域 {child_scope.path_str()}｜衰减继承谓词 {inherited}｜"
+                    f"声明允许工具 {allowed or '（未声明，继承父权能）'}"
+                ),
+                severity=Severity.LOW,
+                step=step,
+                tool="delegate_task",
+                payload={"scope": child_scope.path_str(), "allowed_tools": allowed},
+            )
+        )
+
+        llm = None
+        if self.child_llm_factory is not None:
+            try:
+                llm = self.child_llm_factory(subtask)
+            except Exception:
+                llm = None
+        if llm is None:
+            llm = self.llm
+        if llm is None:
+            return ToolResult(
+                False,
+                "[delegate_task] 无可用模型驱动子 Agent，子任务未执行。",
+                meta={"effects_complete": True},
+            )
+
+        from .agent import GuardedAgent  # 局部导入避免循环依赖
+
+        child = GuardedAgent(
+            self,
+            llm,
+            baseline=self.guard.baseline,
+            max_steps=4,
+            scope=child_scope,
+        )
+        # 记录最近一次委派的作用域（供测试与 UI 观测）
+        self.last_child_scope = child_scope
+        try:
+            run = child.run(subtask, llm_mode="委派子Agent")
+        finally:
+            # 父任务结束（或中途异常/被隔离）：自动收回子作用域——
+            # 该子树上的全部票据立即级联失效，无需等待 TTL 自然过期
+            gc = self.guard.config
+            if gc.enabled and gc.enable_capability and child_scope.node.is_alive():
+                self.guard.authority.revoke_scope(
+                    child_scope, "委派结束：父任务自动收回子 Agent 权能"
+                )
+                self.guard.emit(
+                    GuardEvent(
+                        kind="revoke",
+                        title="🔁 委派结束：自动收回子 Agent 权能",
+                        detail=(
+                            f"子作用域 {child_scope.path_str()} 已标记失效，"
+                            f"其派生票据全部级联作废（无需等待 TTL 过期）"
+                        ),
+                        severity=Severity.MEDIUM,
+                        step=step,
+                        tool="delegate_task",
+                        payload={"scope": child_scope.path_str()},
+                    )
+                )
+
+        self.guard.emit(
+            GuardEvent(
+                kind="delegate",
+                title=f"🤝 子任务结束：{run.status}",
+                detail=f"子 Agent 共 {len(run.steps)} 步，阻断 {run.blocked_count} 次",
+                severity=Severity.MEDIUM if run.blocked_count else Severity.LOW,
+                step=step,
+                tool="delegate_task",
+                payload={"status": run.status, "steps": len(run.steps)},
+            )
+        )
+
+        lines = [
+            f"[delegate_task] 子任务执行完毕（{len(run.steps)} 步，"
+            f"阻断 {run.blocked_count} 次，状态 {run.status}）",
+            f"子 Agent 权能作用域：{child_scope.path_str()}",
+        ]
+        for s in run.steps:
+            mark = "⛔ 已阻断" if s.blocked else ("✅ 已执行" if s.ok else "⚠️ 执行失败")
+            lines.append(f"----- 子步骤 {s.index}｜{s.action}｜{mark} -----")
+            if s.action_input:
+                import json as _json
+
+                lines.append(f"参数：{_json.dumps(s.action_input, ensure_ascii=False)[:300]}")
+            obs = (s.observation or "")[:600]
+            if s.blocked:
+                obs = obs[:400]
+            lines.append(obs)
+        if run.final_answer:
+            lines.append(f"----- 子 Agent 最终结论 -----\n{run.final_answer[:500]}")
+        effects = [
+            effect
+            for child_step in run.steps
+            for effect in (child_step.effects or [])
+        ]
+        effects_complete = all(
+            child_step.effects_complete
+            for child_step in run.steps
+            if child_step.executed
+        )
+        return ToolResult(
+            True,
+            "\n".join(lines),
+            executed=True,
+            effects=effects,
+            meta={"effects_complete": effects_complete},
+        )
 
     # -- 报告 ---------------------------------------------------------------
     def snapshot(self) -> dict[str, Any]:

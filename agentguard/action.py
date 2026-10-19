@@ -363,7 +363,10 @@ def build_action(tool: str, args: dict[str, Any], vfs_root: str | None = None) -
         view.host = str(args.get("host") or "")
         view.resolved_host = resolve_host(view.host)
 
-    if tool not in ("web_scan", "http_get", "ssh_connect", "read_file", "write_file", "run_command", "exfiltrate"):
+    if tool not in (
+        "web_scan", "http_get", "ssh_connect", "read_file", "write_file",
+        "run_command", "exfiltrate", "delegate_task", "sanitize_content",
+    ):
         view.parse_error = f"工具 {tool} 尚无资源审计适配器"
 
     return view

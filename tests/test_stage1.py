@@ -23,7 +23,15 @@ from tools.collect_evidence import summarize
 
 @pytest.fixture
 def bridge(tmp_path):
-    guard = build_guard(vfs_root=str(tmp_path), guard_config=GuardConfig(enable_intent=False, enable_rollback=False))
+    guard = build_guard(
+        vfs_root=str(tmp_path),
+        guard_config=GuardConfig(
+            enable_intent=False,
+            enable_rollback=False,
+            enable_capability=False,
+            enable_taint=False,
+        ),
+    )
     guard.audit_path = str(tmp_path / "audit.jsonl")
     return ToolBridge(guard, str(tmp_path))
 
