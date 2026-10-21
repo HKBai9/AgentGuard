@@ -1,0 +1,48 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "0.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "destination_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Destination Id",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "network",
+        "model",
+        "user",
+        "local"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "address": {
+      "title": "Address",
+      "type": "string"
+    },
+    "allowed_confidentiality": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Allowed Confidentiality",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "destination_id",
+    "kind",
+    "address",
+    "allowed_confidentiality"
+  ],
+  "title": "Destination",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

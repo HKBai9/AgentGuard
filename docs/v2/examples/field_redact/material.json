@@ -1,0 +1,565 @@
+{
+  "schema_version": "0.1",
+  "session_id": "session_dd816a7031d5448fbc99701c729e66a5",
+  "turn_id": "turn_67e67268848d4dfa840ac289ac168086",
+  "call_id": "call_7eb505ae268643fa94f14981e268a4b6",
+  "review_id": "review_0d2a88706b6b4684838be37b7743f905",
+  "phase": "RESULT",
+  "trusted_task": "Read documents and produce a report; send only to the confirmed test receiver.",
+  "task_ref": {
+    "schema_version": "0.1",
+    "artifact_id": "artifact_e4c9fbb3537446e28fe9e3d14488c9cb",
+    "version": 1,
+    "sha256": "9b9a21a9f8aa598a6c6eb74d2e53ccb2e65f27d4f999b6e7ffb26728dab45042",
+    "json_pointer": null,
+    "span": null
+  },
+  "policy": {
+    "schema_version": "0.1",
+    "session_id": "session_dd816a7031d5448fbc99701c729e66a5",
+    "base_policy_version": null,
+    "rules": [
+      {
+        "schema_version": "0.1",
+        "tool_id": "read_document",
+        "effect": "READ",
+        "resource_scope_ids": [
+          "docs",
+          "reports"
+        ],
+        "destination_ids": [],
+        "allowed_uses": [
+          "analyze",
+          "model",
+          "review",
+          "reply",
+          "send",
+          "write"
+        ],
+        "max_calls": 1000
+      },
+      {
+        "schema_version": "0.1",
+        "tool_id": "write_report",
+        "effect": "WRITE",
+        "resource_scope_ids": [
+          "docs",
+          "reports"
+        ],
+        "destination_ids": [],
+        "allowed_uses": [
+          "analyze",
+          "model",
+          "review",
+          "reply",
+          "send",
+          "write"
+        ],
+        "max_calls": 1000
+      },
+      {
+        "schema_version": "0.1",
+        "tool_id": "send_report",
+        "effect": "SEND",
+        "resource_scope_ids": [
+          "docs",
+          "reports"
+        ],
+        "destination_ids": [
+          "receiver"
+        ],
+        "allowed_uses": [
+          "analyze",
+          "model",
+          "review",
+          "reply",
+          "send",
+          "write"
+        ],
+        "max_calls": 1000
+      },
+      {
+        "schema_version": "0.1",
+        "tool_id": "query_rows",
+        "effect": "READ",
+        "resource_scope_ids": [
+          "docs",
+          "reports"
+        ],
+        "destination_ids": [],
+        "allowed_uses": [
+          "analyze",
+          "model",
+          "review",
+          "reply",
+          "send",
+          "write"
+        ],
+        "max_calls": 1000
+      }
+    ],
+    "model_destination_ids": [
+      {
+        "schema_version": "0.1",
+        "destination_id": "agent",
+        "resource_scope_ids": [
+          "docs",
+          "reports"
+        ]
+      },
+      {
+        "schema_version": "0.1",
+        "destination_id": "guard",
+        "resource_scope_ids": [
+          "docs",
+          "reports"
+        ]
+      }
+    ],
+    "rationale": "explicit offline fixture",
+    "evidence_refs": [],
+    "unresolved_requirements": [],
+    "policy_version": "policy_42742ef7037b47a9b5b00e8db6a7836f",
+    "change_kind": "INITIAL"
+  },
+  "host_policy": {
+    "schema_version": "0.1",
+    "rules": [
+      {
+        "schema_version": "0.1",
+        "tool_id": "read_document",
+        "effect": "READ",
+        "resource_scope_ids": [
+          "docs",
+          "reports"
+        ],
+        "destination_ids": [],
+        "allowed_uses": [
+          "analyze",
+          "model",
+          "review",
+          "reply",
+          "send",
+          "write"
+        ],
+        "max_calls": 1000
+      },
+      {
+        "schema_version": "0.1",
+        "tool_id": "write_report",
+        "effect": "WRITE",
+        "resource_scope_ids": [
+          "docs",
+          "reports"
+        ],
+        "destination_ids": [],
+        "allowed_uses": [
+          "analyze",
+          "model",
+          "review",
+          "reply",
+          "send",
+          "write"
+        ],
+        "max_calls": 1000
+      },
+      {
+        "schema_version": "0.1",
+        "tool_id": "send_report",
+        "effect": "SEND",
+        "resource_scope_ids": [
+          "docs",
+          "reports"
+        ],
+        "destination_ids": [
+          "receiver"
+        ],
+        "allowed_uses": [
+          "analyze",
+          "model",
+          "review",
+          "reply",
+          "send",
+          "write"
+        ],
+        "max_calls": 1000
+      },
+      {
+        "schema_version": "0.1",
+        "tool_id": "query_rows",
+        "effect": "READ",
+        "resource_scope_ids": [
+          "docs",
+          "reports"
+        ],
+        "destination_ids": [],
+        "allowed_uses": [
+          "analyze",
+          "model",
+          "review",
+          "reply",
+          "send",
+          "write"
+        ],
+        "max_calls": 1000
+      }
+    ],
+    "model_destination_ids": [
+      {
+        "schema_version": "0.1",
+        "destination_id": "agent",
+        "resource_scope_ids": [
+          "docs",
+          "reports"
+        ]
+      },
+      {
+        "schema_version": "0.1",
+        "destination_id": "guard",
+        "resource_scope_ids": [
+          "docs",
+          "reports"
+        ]
+      }
+    ],
+    "guard_destination_id": "guard",
+    "final_destination_id": "user",
+    "final_use": "reply",
+    "max_review_bytes": 2000000,
+    "permit_ttl_seconds": 60,
+    "review_timeout_seconds": 0.2
+  },
+  "context_version": "context_fb5e61b91dfd48e18119719b62b0238e",
+  "relevant_security_revision": 0,
+  "subject_ref": {
+    "schema_version": "0.1",
+    "artifact_id": "artifact_4c679529ff1f41fdb99b8ede246633f5",
+    "version": 1,
+    "sha256": "f2678691308c70a0b3fe16839f1b696abc0c9e08ba37b01ccb9a2a7fe0751c68",
+    "json_pointer": null,
+    "span": null
+  },
+  "subject": {
+    "body": "docs",
+    "secret": "SYNTHETIC_PRIVATE"
+  },
+  "mandatory_facts": {
+    "ancestor_refs": [
+      {
+        "artifact_id": "artifact_4c679529ff1f41fdb99b8ede246633f5",
+        "json_pointer": null,
+        "schema_version": "0.1",
+        "sha256": "f2678691308c70a0b3fe16839f1b696abc0c9e08ba37b01ccb9a2a7fe0751c68",
+        "span": null,
+        "version": 1
+      },
+      {
+        "artifact_id": "artifact_72ea83e6ce144a258847e51970e818d7",
+        "json_pointer": null,
+        "schema_version": "0.1",
+        "sha256": "8e9505bf7143ff71a469ab72dba0fdd4d444966db486bac516751d36bf24552e",
+        "span": null,
+        "version": 1
+      },
+      {
+        "artifact_id": "artifact_3d3fd4679d6f4903a1bc4b8db7d6eeec",
+        "json_pointer": null,
+        "schema_version": "0.1",
+        "sha256": "8d0ccb734a265b631becd953b550e449e730498de4ee931d4ada5a3ce3783ae1",
+        "span": null,
+        "version": 1
+      },
+      {
+        "artifact_id": "artifact_e4c9fbb3537446e28fe9e3d14488c9cb",
+        "json_pointer": null,
+        "schema_version": "0.1",
+        "sha256": "9b9a21a9f8aa598a6c6eb74d2e53ccb2e65f27d4f999b6e7ffb26728dab45042",
+        "span": null,
+        "version": 1
+      }
+    ],
+    "destination_id": null,
+    "labels": {
+      "allowed_uses": null,
+      "confidentiality": [],
+      "destination_ids": null,
+      "field_restrictions": {},
+      "integrity": [
+        "external",
+        "trusted_user"
+      ],
+      "model_destination_ids": null,
+      "schema_version": "0.1"
+    },
+    "manifest_version": "v1",
+    "resource_scope_ids": [],
+    "source_labels": [
+      {
+        "labels": {
+          "allowed_uses": null,
+          "confidentiality": [],
+          "destination_ids": null,
+          "field_restrictions": {},
+          "integrity": [
+            "trusted_user"
+          ],
+          "model_destination_ids": null,
+          "schema_version": "0.1"
+        },
+        "ref": {
+          "artifact_id": "artifact_e4c9fbb3537446e28fe9e3d14488c9cb",
+          "json_pointer": null,
+          "schema_version": "0.1",
+          "sha256": "9b9a21a9f8aa598a6c6eb74d2e53ccb2e65f27d4f999b6e7ffb26728dab45042",
+          "span": null,
+          "version": 1
+        }
+      },
+      {
+        "labels": {
+          "allowed_uses": null,
+          "confidentiality": [],
+          "destination_ids": null,
+          "field_restrictions": {},
+          "integrity": [
+            "external",
+            "trusted_user"
+          ],
+          "model_destination_ids": null,
+          "schema_version": "0.1"
+        },
+        "ref": {
+          "artifact_id": "artifact_4c679529ff1f41fdb99b8ede246633f5",
+          "json_pointer": null,
+          "schema_version": "0.1",
+          "sha256": "f2678691308c70a0b3fe16839f1b696abc0c9e08ba37b01ccb9a2a7fe0751c68",
+          "span": null,
+          "version": 1
+        }
+      },
+      {
+        "labels": {
+          "allowed_uses": null,
+          "confidentiality": [],
+          "destination_ids": null,
+          "field_restrictions": {},
+          "integrity": [
+            "model",
+            "trusted_user"
+          ],
+          "model_destination_ids": null,
+          "schema_version": "0.1"
+        },
+        "ref": {
+          "artifact_id": "artifact_72ea83e6ce144a258847e51970e818d7",
+          "json_pointer": null,
+          "schema_version": "0.1",
+          "sha256": "8e9505bf7143ff71a469ab72dba0fdd4d444966db486bac516751d36bf24552e",
+          "span": null,
+          "version": 1
+        }
+      },
+      {
+        "labels": {
+          "allowed_uses": null,
+          "confidentiality": [],
+          "destination_ids": null,
+          "field_restrictions": {},
+          "integrity": [
+            "model",
+            "trusted_user"
+          ],
+          "model_destination_ids": null,
+          "schema_version": "0.1"
+        },
+        "ref": {
+          "artifact_id": "artifact_3d3fd4679d6f4903a1bc4b8db7d6eeec",
+          "json_pointer": null,
+          "schema_version": "0.1",
+          "sha256": "8d0ccb734a265b631becd953b550e449e730498de4ee931d4ada5a3ce3783ae1",
+          "span": null,
+          "version": 1
+        }
+      }
+    ],
+    "tool_id": "read_document",
+    "unresolved_risks": [],
+    "use": "analyze"
+  },
+  "evidence": [
+    {
+      "schema_version": "0.1",
+      "ref": {
+        "schema_version": "0.1",
+        "artifact_id": "artifact_e4c9fbb3537446e28fe9e3d14488c9cb",
+        "version": 1,
+        "sha256": "9b9a21a9f8aa598a6c6eb74d2e53ccb2e65f27d4f999b6e7ffb26728dab45042",
+        "json_pointer": null,
+        "span": null
+      },
+      "content": "Read documents and produce a report; send only to the confirmed test receiver.",
+      "labels": {
+        "schema_version": "0.1",
+        "confidentiality": [],
+        "allowed_uses": null,
+        "destination_ids": null,
+        "model_destination_ids": null,
+        "integrity": [
+          "trusted_user"
+        ],
+        "field_restrictions": {}
+      },
+      "role": "task"
+    },
+    {
+      "schema_version": "0.1",
+      "ref": {
+        "schema_version": "0.1",
+        "artifact_id": "artifact_4c679529ff1f41fdb99b8ede246633f5",
+        "version": 1,
+        "sha256": "f2678691308c70a0b3fe16839f1b696abc0c9e08ba37b01ccb9a2a7fe0751c68",
+        "json_pointer": null,
+        "span": null
+      },
+      "content": {
+        "body": "docs",
+        "secret": "SYNTHETIC_PRIVATE"
+      },
+      "labels": {
+        "schema_version": "0.1",
+        "confidentiality": [],
+        "allowed_uses": null,
+        "destination_ids": null,
+        "model_destination_ids": null,
+        "integrity": [
+          "external",
+          "trusted_user"
+        ],
+        "field_restrictions": {}
+      },
+      "role": "subject"
+    },
+    {
+      "schema_version": "0.1",
+      "ref": {
+        "schema_version": "0.1",
+        "artifact_id": "artifact_72ea83e6ce144a258847e51970e818d7",
+        "version": 1,
+        "sha256": "8e9505bf7143ff71a469ab72dba0fdd4d444966db486bac516751d36bf24552e",
+        "json_pointer": null,
+        "span": null
+      },
+      "content": {
+        "resource": "docs"
+      },
+      "labels": {
+        "schema_version": "0.1",
+        "confidentiality": [],
+        "allowed_uses": null,
+        "destination_ids": null,
+        "model_destination_ids": null,
+        "integrity": [
+          "model",
+          "trusted_user"
+        ],
+        "field_restrictions": {}
+      },
+      "role": "related"
+    },
+    {
+      "schema_version": "0.1",
+      "ref": {
+        "schema_version": "0.1",
+        "artifact_id": "artifact_3d3fd4679d6f4903a1bc4b8db7d6eeec",
+        "version": 1,
+        "sha256": "8d0ccb734a265b631becd953b550e449e730498de4ee931d4ada5a3ce3783ae1",
+        "json_pointer": null,
+        "span": null
+      },
+      "content": "report",
+      "labels": {
+        "schema_version": "0.1",
+        "confidentiality": [],
+        "allowed_uses": null,
+        "destination_ids": null,
+        "model_destination_ids": null,
+        "integrity": [
+          "model",
+          "trusted_user"
+        ],
+        "field_restrictions": {}
+      },
+      "role": "related"
+    }
+  ],
+  "lineage": [
+    {
+      "schema_version": "0.1",
+      "session_id": "session_dd816a7031d5448fbc99701c729e66a5",
+      "source_ref": {
+        "schema_version": "0.1",
+        "artifact_id": "artifact_e4c9fbb3537446e28fe9e3d14488c9cb",
+        "version": 1,
+        "sha256": "9b9a21a9f8aa598a6c6eb74d2e53ccb2e65f27d4f999b6e7ffb26728dab45042",
+        "json_pointer": null,
+        "span": null
+      },
+      "target_ref": {
+        "schema_version": "0.1",
+        "artifact_id": "artifact_3d3fd4679d6f4903a1bc4b8db7d6eeec",
+        "version": 1,
+        "sha256": "8d0ccb734a265b631becd953b550e449e730498de4ee931d4ada5a3ce3783ae1",
+        "json_pointer": null,
+        "span": null
+      },
+      "kind": "possible",
+      "event_id": "event_a9370cdb89334f8a91893e959f222967"
+    },
+    {
+      "schema_version": "0.1",
+      "session_id": "session_dd816a7031d5448fbc99701c729e66a5",
+      "source_ref": {
+        "schema_version": "0.1",
+        "artifact_id": "artifact_3d3fd4679d6f4903a1bc4b8db7d6eeec",
+        "version": 1,
+        "sha256": "8d0ccb734a265b631becd953b550e449e730498de4ee931d4ada5a3ce3783ae1",
+        "json_pointer": null,
+        "span": null
+      },
+      "target_ref": {
+        "schema_version": "0.1",
+        "artifact_id": "artifact_72ea83e6ce144a258847e51970e818d7",
+        "version": 1,
+        "sha256": "8e9505bf7143ff71a469ab72dba0fdd4d444966db486bac516751d36bf24552e",
+        "json_pointer": null,
+        "span": null
+      },
+      "kind": "possible",
+      "event_id": "event_a9370cdb89334f8a91893e959f222967"
+    },
+    {
+      "schema_version": "0.1",
+      "session_id": "session_dd816a7031d5448fbc99701c729e66a5",
+      "source_ref": {
+        "schema_version": "0.1",
+        "artifact_id": "artifact_72ea83e6ce144a258847e51970e818d7",
+        "version": 1,
+        "sha256": "8e9505bf7143ff71a469ab72dba0fdd4d444966db486bac516751d36bf24552e",
+        "json_pointer": null,
+        "span": null
+      },
+      "target_ref": {
+        "schema_version": "0.1",
+        "artifact_id": "artifact_4c679529ff1f41fdb99b8ede246633f5",
+        "version": 1,
+        "sha256": "f2678691308c70a0b3fe16839f1b696abc0c9e08ba37b01ccb9a2a7fe0751c68",
+        "json_pointer": null,
+        "span": null
+      },
+      "kind": "possible",
+      "event_id": "event_7a6b21580e8c410fac965a86bf6de4b7"
+    }
+  ],
+  "recent_events": [],
+  "supplemental_attempt": 0
+}

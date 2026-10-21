@@ -1,0 +1,56 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "0.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "session_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "recovery_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Recovery Id",
+      "type": "string"
+    },
+    "new_host_context_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "New Host Context Id",
+      "type": "string"
+    },
+    "completed_resets": {
+      "additionalProperties": {
+        "type": "boolean"
+      },
+      "title": "Completed Resets",
+      "type": "object"
+    },
+    "unsupported": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Unsupported",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "session_id",
+    "recovery_id",
+    "new_host_context_id",
+    "completed_resets",
+    "unsupported"
+  ],
+  "title": "RecoveryAck",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

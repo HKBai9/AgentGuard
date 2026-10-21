@@ -1,0 +1,49 @@
+{
+  "schema_version": "0.1",
+  "session_id": "session_dd816a7031d5448fbc99701c729e66a5",
+  "turn_id": "turn_67e67268848d4dfa840ac289ac168086",
+  "results": {
+    "call_7eb505ae268643fa94f14981e268a4b6": {
+      "schema_version": "0.1",
+      "session_id": "session_dd816a7031d5448fbc99701c729e66a5",
+      "turn_id": "turn_67e67268848d4dfa840ac289ac168086",
+      "call_id": "call_7eb505ae268643fa94f14981e268a4b6",
+      "status": "RELEASED",
+      "reason_code": "GUARD_DECISION",
+      "content": {
+        "body": "docs",
+        "secret": "[REDACTED]"
+      },
+      "artifact_ref": {
+        "schema_version": "0.1",
+        "artifact_id": "artifact_4c679529ff1f41fdb99b8ede246633f5",
+        "version": 2,
+        "sha256": "bee7dde530ad51be40192a2f1cfb3d2746ea57872ecadf671998dbab08f6089d",
+        "json_pointer": null,
+        "span": null
+      },
+      "receipt": {
+        "schema_version": "0.1",
+        "receipt_id": "receipt_d68a1e2bfc174bb4963cafd9340a3cd6",
+        "permit_id": "permit_f76e372c3427416e8f2f0294232aeb7d",
+        "session_id": "session_dd816a7031d5448fbc99701c729e66a5",
+        "turn_id": "turn_67e67268848d4dfa840ac289ac168086",
+        "call_id": "call_7eb505ae268643fa94f14981e268a4b6",
+        "status": "SUCCEEDED",
+        "reason_code": "TOOL_SUCCEEDED",
+        "effect_evidence": {
+          "dispatched": true
+        },
+        "artifact_ref": {
+          "schema_version": "0.1",
+          "artifact_id": "artifact_4c679529ff1f41fdb99b8ede246633f5",
+          "version": 1,
+          "sha256": "f2678691308c70a0b3fe16839f1b696abc0c9e08ba37b01ccb9a2a7fe0751c68",
+          "json_pointer": null,
+          "span": null
+        },
+        "timestamp": "2026-10-21T12:32:20.218525Z"
+      }
+    }
+  }
+}

@@ -1,0 +1,109 @@
+{
+  "$defs": {
+    "EvidenceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "artifact_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "json_pointer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Json Pointer"
+        },
+        "span": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Span"
+        }
+      },
+      "required": [
+        "schema_version",
+        "artifact_id",
+        "version",
+        "sha256",
+        "json_pointer",
+        "span"
+      ],
+      "title": "EvidenceRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "0.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "session_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "risk_refs": {
+      "items": {
+        "$ref": "#/$defs/EvidenceRef"
+      },
+      "minItems": 1,
+      "title": "Risk Refs",
+      "type": "array"
+    },
+    "reason_code": {
+      "title": "Reason Code",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "session_id",
+    "risk_refs",
+    "reason_code"
+  ],
+  "title": "RecoveryRequest",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

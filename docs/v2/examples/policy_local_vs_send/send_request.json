@@ -1,0 +1,345 @@
+{
+  "schema_version": "0.1",
+  "trusted_task": "Read documents and produce a report; send only to the confirmed test receiver.",
+  "host_policy": {
+    "schema_version": "0.1",
+    "rules": [
+      {
+        "schema_version": "0.1",
+        "tool_id": "read_document",
+        "effect": "READ",
+        "resource_scope_ids": [
+          "docs",
+          "reports"
+        ],
+        "destination_ids": [],
+        "allowed_uses": [
+          "analyze",
+          "model",
+          "review",
+          "reply",
+          "send",
+          "write"
+        ],
+        "max_calls": 1000
+      },
+      {
+        "schema_version": "0.1",
+        "tool_id": "write_report",
+        "effect": "WRITE",
+        "resource_scope_ids": [
+          "docs",
+          "reports"
+        ],
+        "destination_ids": [],
+        "allowed_uses": [
+          "analyze",
+          "model",
+          "review",
+          "reply",
+          "send",
+          "write"
+        ],
+        "max_calls": 1000
+      },
+      {
+        "schema_version": "0.1",
+        "tool_id": "send_report",
+        "effect": "SEND",
+        "resource_scope_ids": [
+          "docs",
+          "reports"
+        ],
+        "destination_ids": [
+          "receiver"
+        ],
+        "allowed_uses": [
+          "analyze",
+          "model",
+          "review",
+          "reply",
+          "send",
+          "write"
+        ],
+        "max_calls": 1000
+      },
+      {
+        "schema_version": "0.1",
+        "tool_id": "query_rows",
+        "effect": "READ",
+        "resource_scope_ids": [
+          "docs",
+          "reports"
+        ],
+        "destination_ids": [],
+        "allowed_uses": [
+          "analyze",
+          "model",
+          "review",
+          "reply",
+          "send",
+          "write"
+        ],
+        "max_calls": 1000
+      }
+    ],
+    "model_destination_ids": [
+      {
+        "schema_version": "0.1",
+        "destination_id": "agent",
+        "resource_scope_ids": [
+          "docs",
+          "reports"
+        ]
+      },
+      {
+        "schema_version": "0.1",
+        "destination_id": "guard",
+        "resource_scope_ids": [
+          "docs",
+          "reports"
+        ]
+      }
+    ],
+    "guard_destination_id": "guard",
+    "final_destination_id": "user",
+    "final_use": "reply",
+    "max_review_bytes": 2000000,
+    "permit_ttl_seconds": 60,
+    "review_timeout_seconds": 0.2
+  },
+  "resource_catalog": {
+    "schema_version": "0.1",
+    "resources": [
+      {
+        "schema_version": "0.1",
+        "scope_id": "docs",
+        "kind": "logical",
+        "root": "docs",
+        "labels": {
+          "schema_version": "0.1",
+          "confidentiality": [],
+          "allowed_uses": null,
+          "destination_ids": null,
+          "model_destination_ids": null,
+          "integrity": [
+            "external"
+          ],
+          "field_restrictions": {}
+        }
+      },
+      {
+        "schema_version": "0.1",
+        "scope_id": "reports",
+        "kind": "logical",
+        "root": "reports",
+        "labels": {
+          "schema_version": "0.1",
+          "confidentiality": [],
+          "allowed_uses": null,
+          "destination_ids": null,
+          "model_destination_ids": null,
+          "integrity": [
+            "external"
+          ],
+          "field_restrictions": {}
+        }
+      }
+    ],
+    "destinations": [
+      {
+        "schema_version": "0.1",
+        "destination_id": "agent",
+        "kind": "model",
+        "address": "https://agent.test",
+        "allowed_confidentiality": [
+          "private"
+        ]
+      },
+      {
+        "schema_version": "0.1",
+        "destination_id": "guard",
+        "kind": "model",
+        "address": "https://guard.test",
+        "allowed_confidentiality": [
+          "private"
+        ]
+      },
+      {
+        "schema_version": "0.1",
+        "destination_id": "receiver",
+        "kind": "network",
+        "address": "https://receiver.test/report",
+        "allowed_confidentiality": []
+      },
+      {
+        "schema_version": "0.1",
+        "destination_id": "user",
+        "kind": "user",
+        "address": "local-user",
+        "allowed_confidentiality": []
+      }
+    ]
+  },
+  "tool_manifests": [
+    {
+      "schema_version": "0.1",
+      "tool_id": "read_document",
+      "manifest_version": "v1",
+      "parameters_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "resource": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource"
+        ],
+        "type": "object"
+      },
+      "effects": [
+        "READ"
+      ],
+      "resource_parameter": "/resource",
+      "destination_parameter": null,
+      "artifact_parameters": {},
+      "return_media_type": "text/plain",
+      "supports_idempotency_key": false,
+      "output_labels": {
+        "schema_version": "0.1",
+        "confidentiality": [],
+        "allowed_uses": null,
+        "destination_ids": null,
+        "model_destination_ids": null,
+        "integrity": [
+          "external"
+        ],
+        "field_restrictions": {}
+      },
+      "synthetic_demo": true
+    },
+    {
+      "schema_version": "0.1",
+      "tool_id": "write_report",
+      "manifest_version": "v1",
+      "parameters_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource",
+          "body"
+        ],
+        "type": "object"
+      },
+      "effects": [
+        "WRITE"
+      ],
+      "resource_parameter": "/resource",
+      "destination_parameter": null,
+      "artifact_parameters": {},
+      "return_media_type": "text/plain",
+      "supports_idempotency_key": false,
+      "output_labels": {
+        "schema_version": "0.1",
+        "confidentiality": [],
+        "allowed_uses": null,
+        "destination_ids": null,
+        "model_destination_ids": null,
+        "integrity": [
+          "external"
+        ],
+        "field_restrictions": {}
+      },
+      "synthetic_demo": true
+    },
+    {
+      "schema_version": "0.1",
+      "tool_id": "send_report",
+      "manifest_version": "v1",
+      "parameters_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "destination": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "destination",
+          "body"
+        ],
+        "type": "object"
+      },
+      "effects": [
+        "SEND"
+      ],
+      "resource_parameter": null,
+      "destination_parameter": "/destination",
+      "artifact_parameters": {},
+      "return_media_type": "text/plain",
+      "supports_idempotency_key": false,
+      "output_labels": {
+        "schema_version": "0.1",
+        "confidentiality": [],
+        "allowed_uses": null,
+        "destination_ids": null,
+        "model_destination_ids": null,
+        "integrity": [
+          "external"
+        ],
+        "field_restrictions": {}
+      },
+      "synthetic_demo": true
+    },
+    {
+      "schema_version": "0.1",
+      "tool_id": "query_rows",
+      "manifest_version": "v1",
+      "parameters_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "resource": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource"
+        ],
+        "type": "object"
+      },
+      "effects": [
+        "READ"
+      ],
+      "resource_parameter": "/resource",
+      "destination_parameter": null,
+      "artifact_parameters": {},
+      "return_media_type": "application/json",
+      "supports_idempotency_key": false,
+      "output_labels": {
+        "schema_version": "0.1",
+        "confidentiality": [],
+        "allowed_uses": null,
+        "destination_ids": null,
+        "model_destination_ids": null,
+        "integrity": [
+          "external"
+        ],
+        "field_restrictions": {}
+      },
+      "synthetic_demo": true
+    }
+  ],
+  "confirmed_authorizations": [
+    "offline fixture"
+  ]
+}

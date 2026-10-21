@@ -1,0 +1,39 @@
+{
+  "schema_version": "0.1",
+  "session_id": "session_d0ff34379939447195b0eaac8c37eeed",
+  "turn_id": "turn_e50e93a7f7aa4df0bd08bf6065f7f39c",
+  "results": {
+    "call_c989ab55e9f644768370c195416f5c24": {
+      "schema_version": "0.1",
+      "session_id": "session_d0ff34379939447195b0eaac8c37eeed",
+      "turn_id": "turn_e50e93a7f7aa4df0bd08bf6065f7f39c",
+      "call_id": "call_c989ab55e9f644768370c195416f5c24",
+      "status": "REVIEW_PENDING",
+      "reason_code": "INVALID_REFERENCE",
+      "content": null,
+      "artifact_ref": null,
+      "receipt": {
+        "schema_version": "0.1",
+        "receipt_id": "receipt_9919ce2877dd4774ae94b1bed195dcbf",
+        "permit_id": "permit_5355361e80d74607b49c20195b0b14b5",
+        "session_id": "session_d0ff34379939447195b0eaac8c37eeed",
+        "turn_id": "turn_e50e93a7f7aa4df0bd08bf6065f7f39c",
+        "call_id": "call_c989ab55e9f644768370c195416f5c24",
+        "status": "SUCCEEDED",
+        "reason_code": "TOOL_SUCCEEDED",
+        "effect_evidence": {
+          "dispatched": true
+        },
+        "artifact_ref": {
+          "schema_version": "0.1",
+          "artifact_id": "artifact_4b7427202d784ed39ca1ce65d6c251ed",
+          "version": 1,
+          "sha256": "acc4839a4dcb1aec492ba94f2384ae6e18eef5b694df62b957ba51c28ab29e8a",
+          "json_pointer": null,
+          "span": null
+        },
+        "timestamp": "2026-10-21T12:32:20.264565Z"
+      }
+    }
+  }
+}

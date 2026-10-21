@@ -22,6 +22,10 @@ experiments/results/*/
 # ---- 依赖与构建产物 ----
 libs/
 .wheelhouse/
+build/
+dist/
+*.egg-info/
+.agentguard-v2/
 .venv/
 __pycache__/
 *.py[cod]

@@ -1,0 +1,186 @@
+{
+  "$defs": {
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "ref_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Ref Id",
+          "type": "string"
+        },
+        "session_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Session Id",
+          "type": "string"
+        },
+        "artifact_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "allowed_uses": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Uses",
+          "type": "array"
+        },
+        "tool_ids": {
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "type": "string"
+          },
+          "title": "Tool Ids",
+          "type": "array"
+        },
+        "destination_ids": {
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "type": "string"
+          },
+          "title": "Destination Ids",
+          "type": "array"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "ref_id",
+        "session_id",
+        "artifact_id",
+        "version",
+        "allowed_uses",
+        "tool_ids",
+        "destination_ids",
+        "expires_at"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    },
+    "ToolProposal": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "tool_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Tool Id",
+          "type": "string"
+        },
+        "manifest_version": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Manifest Version",
+          "type": "string"
+        },
+        "args": {
+          "additionalProperties": true,
+          "title": "Args",
+          "type": "object"
+        },
+        "artifact_refs": {
+          "items": {
+            "$ref": "#/$defs/ArtifactRef"
+          },
+          "title": "Artifact Refs",
+          "type": "array"
+        },
+        "use": {
+          "title": "Use",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "tool_id",
+        "manifest_version",
+        "args",
+        "artifact_refs",
+        "use"
+      ],
+      "title": "ToolProposal",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "0.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "session_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "model_call_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Model Call Id",
+      "type": "string"
+    },
+    "context_version": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Context Version",
+      "type": "string"
+    },
+    "content": {
+      "title": "Content",
+      "type": "string"
+    },
+    "tool_proposals": {
+      "items": {
+        "$ref": "#/$defs/ToolProposal"
+      },
+      "title": "Tool Proposals",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "session_id",
+    "model_call_id",
+    "context_version",
+    "content",
+    "tool_proposals"
+  ],
+  "title": "ModelOutputRequest",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

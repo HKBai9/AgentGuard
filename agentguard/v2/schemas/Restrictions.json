@@ -1,0 +1,75 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "0.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "confidentiality": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Confidentiality",
+      "type": "array"
+    },
+    "allowed_uses": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Allowed Uses"
+    },
+    "destination_ids": {
+      "anyOf": [
+        {
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Destination Ids"
+    },
+    "model_destination_ids": {
+      "anyOf": [
+        {
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Model Destination Ids"
+    }
+  },
+  "required": [
+    "schema_version",
+    "confidentiality",
+    "allowed_uses",
+    "destination_ids",
+    "model_destination_ids"
+  ],
+  "title": "Restrictions",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

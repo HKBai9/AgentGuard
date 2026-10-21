@@ -1,0 +1,180 @@
+{
+  "$defs": {
+    "ModelDestinationGrant": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "destination_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Destination Id",
+          "type": "string"
+        },
+        "resource_scope_ids": {
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "type": "string"
+          },
+          "title": "Resource Scope Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "destination_id",
+        "resource_scope_ids"
+      ],
+      "title": "ModelDestinationGrant",
+      "type": "object"
+    },
+    "PolicyRule": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "tool_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Tool Id",
+          "type": "string"
+        },
+        "effect": {
+          "enum": [
+            "READ",
+            "WRITE",
+            "SEND",
+            "DELETE"
+          ],
+          "title": "Effect",
+          "type": "string"
+        },
+        "resource_scope_ids": {
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "type": "string"
+          },
+          "title": "Resource Scope Ids",
+          "type": "array"
+        },
+        "destination_ids": {
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "type": "string"
+          },
+          "title": "Destination Ids",
+          "type": "array"
+        },
+        "allowed_uses": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Allowed Uses",
+          "type": "array"
+        },
+        "max_calls": {
+          "minimum": 0,
+          "title": "Max Calls",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "tool_id",
+        "effect",
+        "resource_scope_ids",
+        "destination_ids",
+        "allowed_uses",
+        "max_calls"
+      ],
+      "title": "PolicyRule",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "0.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "rules": {
+      "items": {
+        "$ref": "#/$defs/PolicyRule"
+      },
+      "title": "Rules",
+      "type": "array"
+    },
+    "model_destination_ids": {
+      "items": {
+        "$ref": "#/$defs/ModelDestinationGrant"
+      },
+      "title": "Model Destination Ids",
+      "type": "array"
+    },
+    "guard_destination_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Guard Destination Id",
+      "type": "string"
+    },
+    "final_destination_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Final Destination Id",
+      "type": "string"
+    },
+    "final_use": {
+      "title": "Final Use",
+      "type": "string"
+    },
+    "max_review_bytes": {
+      "exclusiveMinimum": 0,
+      "title": "Max Review Bytes",
+      "type": "integer"
+    },
+    "permit_ttl_seconds": {
+      "exclusiveMinimum": 0,
+      "maximum": 3600,
+      "title": "Permit Ttl Seconds",
+      "type": "integer"
+    },
+    "review_timeout_seconds": {
+      "exclusiveMinimum": 0,
+      "maximum": 300,
+      "title": "Review Timeout Seconds",
+      "type": "number"
+    }
+  },
+  "required": [
+    "schema_version",
+    "rules",
+    "model_destination_ids",
+    "guard_destination_id",
+    "final_destination_id",
+    "final_use",
+    "max_review_bytes",
+    "permit_ttl_seconds",
+    "review_timeout_seconds"
+  ],
+  "title": "HostPolicy",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

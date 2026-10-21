@@ -1,0 +1,48 @@
+{
+  "schema_version": "0.1",
+  "status": "DECIDED",
+  "decision": {
+    "schema_version": "0.1",
+    "review_id": "review_37a6da30a9984ba3b1937d71f09fe2fc",
+    "session_id": "session_22bf0c6db88a449da88922c41f4990a8",
+    "turn_id": "turn_863303a0818946f3b9832ce9ab8b89f9",
+    "call_id": "call_78806fab42de4e1083415c47632e25f0",
+    "phase": "RESULT",
+    "policy_version": "policy_bdbeb25284d14b4a89e22253a9b891e6",
+    "context_version": "context_79cceffd657b487ea0d45cbae04d44e1",
+    "subject_ref": {
+      "schema_version": "0.1",
+      "artifact_id": "artifact_3178227d29924d899cf2b9a363307b82",
+      "version": 1,
+      "sha256": "acc4839a4dcb1aec492ba94f2384ae6e18eef5b694df62b957ba51c28ab29e8a",
+      "json_pointer": null,
+      "span": null
+    },
+    "decision": "BLOCK",
+    "reason_code": "FIXTURE_DECISION",
+    "reason_summary": "test",
+    "evidence_refs": [
+      {
+        "schema_version": "0.1",
+        "artifact_id": "artifact_3178227d29924d899cf2b9a363307b82",
+        "version": 1,
+        "sha256": "acc4839a4dcb1aec492ba94f2384ae6e18eef5b694df62b957ba51c28ab29e8a",
+        "json_pointer": null,
+        "span": null
+      }
+    ],
+    "findings": [],
+    "redaction_targets": [],
+    "requested_evidence_refs": [],
+    "usage": {
+      "schema_version": "0.1",
+      "provider": "fixture",
+      "model": "offline",
+      "input_tokens": null,
+      "output_tokens": null,
+      "latency_ms": 0.0,
+      "attempts": 1
+    }
+  },
+  "failure": null
+}

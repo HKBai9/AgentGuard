@@ -1,0 +1,280 @@
+{
+  "$defs": {
+    "DataLabels": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "confidentiality": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Confidentiality",
+          "type": "array"
+        },
+        "allowed_uses": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Allowed Uses"
+        },
+        "destination_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_.:-]+$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Destination Ids"
+        },
+        "model_destination_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_.:-]+$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Destination Ids"
+        },
+        "integrity": {
+          "items": {
+            "enum": [
+              "trusted_user",
+              "host",
+              "external",
+              "model"
+            ],
+            "type": "string"
+          },
+          "title": "Integrity",
+          "type": "array"
+        },
+        "field_restrictions": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Restrictions"
+          },
+          "title": "Field Restrictions",
+          "type": "object"
+        }
+      },
+      "required": [
+        "schema_version",
+        "confidentiality",
+        "allowed_uses",
+        "destination_ids",
+        "model_destination_ids",
+        "integrity",
+        "field_restrictions"
+      ],
+      "title": "DataLabels",
+      "type": "object"
+    },
+    "Restrictions": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "confidentiality": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Confidentiality",
+          "type": "array"
+        },
+        "allowed_uses": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Allowed Uses"
+        },
+        "destination_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_.:-]+$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Destination Ids"
+        },
+        "model_destination_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_.:-]+$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Destination Ids"
+        }
+      },
+      "required": [
+        "schema_version",
+        "confidentiality",
+        "allowed_uses",
+        "destination_ids",
+        "model_destination_ids"
+      ],
+      "title": "Restrictions",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "0.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "tool_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Tool Id",
+      "type": "string"
+    },
+    "manifest_version": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Manifest Version",
+      "type": "string"
+    },
+    "parameters_schema": {
+      "additionalProperties": true,
+      "title": "Parameters Schema",
+      "type": "object"
+    },
+    "effects": {
+      "items": {
+        "enum": [
+          "READ",
+          "WRITE",
+          "SEND",
+          "DELETE"
+        ],
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Effects",
+      "type": "array"
+    },
+    "resource_parameter": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Resource Parameter"
+    },
+    "destination_parameter": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Destination Parameter"
+    },
+    "artifact_parameters": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Artifact Parameters",
+      "type": "object"
+    },
+    "return_media_type": {
+      "enum": [
+        "text/plain",
+        "application/json"
+      ],
+      "title": "Return Media Type",
+      "type": "string"
+    },
+    "supports_idempotency_key": {
+      "title": "Supports Idempotency Key",
+      "type": "boolean"
+    },
+    "output_labels": {
+      "$ref": "#/$defs/DataLabels"
+    },
+    "synthetic_demo": {
+      "default": false,
+      "title": "Synthetic Demo",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema_version",
+    "tool_id",
+    "manifest_version",
+    "parameters_schema",
+    "effects",
+    "resource_parameter",
+    "destination_parameter",
+    "artifact_parameters",
+    "return_media_type",
+    "supports_idempotency_key",
+    "output_labels"
+  ],
+  "title": "ToolManifest",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

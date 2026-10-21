@@ -1,0 +1,365 @@
+{
+  "$defs": {
+    "EvidenceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "artifact_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "json_pointer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Json Pointer"
+        },
+        "span": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Span"
+        }
+      },
+      "required": [
+        "schema_version",
+        "artifact_id",
+        "version",
+        "sha256",
+        "json_pointer",
+        "span"
+      ],
+      "title": "EvidenceRef",
+      "type": "object"
+    },
+    "Finding": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "finding_type": {
+          "title": "Finding Type",
+          "type": "string"
+        },
+        "affected_action_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Affected Action Field"
+        },
+        "evidence_refs": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "minItems": 1,
+          "title": "Evidence Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "finding_type",
+        "affected_action_field",
+        "evidence_refs"
+      ],
+      "title": "Finding",
+      "type": "object"
+    },
+    "RedactionTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "evidence_ref": {
+          "$ref": "#/$defs/EvidenceRef"
+        },
+        "transform_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Transform Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "evidence_ref",
+        "transform_id"
+      ],
+      "title": "RedactionTarget",
+      "type": "object"
+    },
+    "Usage": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "provider": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Provider"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model"
+        },
+        "input_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Input Tokens"
+        },
+        "output_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Output Tokens"
+        },
+        "latency_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Latency Ms"
+        },
+        "attempts": {
+          "minimum": 0,
+          "title": "Attempts",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "provider",
+        "model",
+        "input_tokens",
+        "output_tokens",
+        "latency_ms",
+        "attempts"
+      ],
+      "title": "Usage",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "0.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "review_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Review Id",
+      "type": "string"
+    },
+    "session_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "turn_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Turn Id",
+      "type": "string"
+    },
+    "call_id": {
+      "anyOf": [
+        {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Call Id"
+    },
+    "phase": {
+      "enum": [
+        "ACTION",
+        "RESULT",
+        "FINAL"
+      ],
+      "title": "Phase",
+      "type": "string"
+    },
+    "policy_version": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Policy Version",
+      "type": "string"
+    },
+    "context_version": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Context Version",
+      "type": "string"
+    },
+    "subject_ref": {
+      "$ref": "#/$defs/EvidenceRef"
+    },
+    "decision": {
+      "enum": [
+        "ALLOW",
+        "BLOCK",
+        "REDACT",
+        "NEEDS_CONTEXT"
+      ],
+      "title": "Decision",
+      "type": "string"
+    },
+    "reason_code": {
+      "title": "Reason Code",
+      "type": "string"
+    },
+    "reason_summary": {
+      "title": "Reason Summary",
+      "type": "string"
+    },
+    "evidence_refs": {
+      "items": {
+        "$ref": "#/$defs/EvidenceRef"
+      },
+      "title": "Evidence Refs",
+      "type": "array"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/Finding"
+      },
+      "title": "Findings",
+      "type": "array"
+    },
+    "redaction_targets": {
+      "items": {
+        "$ref": "#/$defs/RedactionTarget"
+      },
+      "title": "Redaction Targets",
+      "type": "array"
+    },
+    "requested_evidence_refs": {
+      "items": {
+        "$ref": "#/$defs/EvidenceRef"
+      },
+      "title": "Requested Evidence Refs",
+      "type": "array"
+    },
+    "usage": {
+      "$ref": "#/$defs/Usage"
+    }
+  },
+  "required": [
+    "schema_version",
+    "review_id",
+    "session_id",
+    "turn_id",
+    "call_id",
+    "phase",
+    "policy_version",
+    "context_version",
+    "subject_ref",
+    "decision",
+    "reason_code",
+    "reason_summary",
+    "evidence_refs",
+    "findings",
+    "redaction_targets",
+    "requested_evidence_refs",
+    "usage"
+  ],
+  "title": "ReviewDecision",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

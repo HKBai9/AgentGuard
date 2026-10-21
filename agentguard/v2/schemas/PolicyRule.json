@@ -1,0 +1,72 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "0.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "tool_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Tool Id",
+      "type": "string"
+    },
+    "effect": {
+      "enum": [
+        "READ",
+        "WRITE",
+        "SEND",
+        "DELETE"
+      ],
+      "title": "Effect",
+      "type": "string"
+    },
+    "resource_scope_ids": {
+      "items": {
+        "maxLength": 200,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_.:-]+$",
+        "type": "string"
+      },
+      "title": "Resource Scope Ids",
+      "type": "array"
+    },
+    "destination_ids": {
+      "items": {
+        "maxLength": 200,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_.:-]+$",
+        "type": "string"
+      },
+      "title": "Destination Ids",
+      "type": "array"
+    },
+    "allowed_uses": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Allowed Uses",
+      "type": "array"
+    },
+    "max_calls": {
+      "minimum": 0,
+      "title": "Max Calls",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "tool_id",
+    "effect",
+    "resource_scope_ids",
+    "destination_ids",
+    "allowed_uses",
+    "max_calls"
+  ],
+  "title": "PolicyRule",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}
