@@ -1,0 +1,28 @@
+{
+  "schema_version": "0.1",
+  "session_id": "session-synthetic",
+  "turn_id": "turn-1",
+  "review_id": "review-action",
+  "call_id": "call-1",
+  "phase": "ACTION",
+  "policy_version": "policy-1",
+  "context_version": "context-1",
+  "subject_ref": {
+    "artifact_id": "doc-synthetic",
+    "version": 1,
+    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "decision": "ALLOW",
+  "reason_code": "TASK_RELEVANT",
+  "reason_summary": "内容符合本地报告任务。",
+  "evidence_refs": [
+    {
+      "artifact_id": "doc-synthetic",
+      "version": 1,
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ],
+  "findings": [],
+  "redaction_targets": [],
+  "requested_evidence_refs": []
+}

@@ -1,0 +1,22 @@
+{
+  "synthetic": true,
+  "local": {
+    "effects": [
+      "READ",
+      "WRITE"
+    ],
+    "send_allowed": false
+  },
+  "send": {
+    "effects": [
+      "READ",
+      "WRITE",
+      "SEND"
+    ],
+    "destination_ids": [
+      "test_receiver"
+    ],
+    "max_send_calls": 1
+  },
+  "reason": "人工矩阵先于模型响应定义；同工具清单随真实任务变化。"
+}

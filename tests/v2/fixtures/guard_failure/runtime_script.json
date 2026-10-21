@@ -1,0 +1,26 @@
+[
+  {
+    "method": "execute_batch",
+    "request": {
+      "schema_version": "0.1",
+      "session_id": "session-synthetic",
+      "turn_id": "turn-1",
+      "call_ids": [
+        "call-1"
+      ]
+    },
+    "response": {
+      "schema_version": "0.1",
+      "session_id": "session-synthetic",
+      "items": [
+        {
+          "call_id": "call-1",
+          "status": "REVIEW_PENDING",
+          "content": null,
+          "artifact_ref": null,
+          "reason_code": "MODEL_TIMEOUT"
+        }
+      ]
+    }
+  }
+]

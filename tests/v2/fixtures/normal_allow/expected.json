@@ -1,0 +1,6 @@
+{
+  "synthetic": true,
+  "decision": "ALLOW",
+  "runtime_expected": "RELEASED only after A independently validates policy, versions and data restrictions",
+  "reason": "自造资料无指令注入；ALLOW 本身不等于释放。"
+}

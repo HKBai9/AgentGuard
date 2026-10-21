@@ -1,0 +1,68 @@
+{
+  "schema_version": "0.1",
+  "session_id": "session-synthetic",
+  "turn_id": "turn-1",
+  "review_id": "review-final",
+  "call_id": null,
+  "phase": "FINAL",
+  "policy_version": "policy-1",
+  "context_version": "context-1",
+  "subject_ref": {
+    "artifact_id": "doc-synthetic",
+    "version": 1,
+    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "trusted_task": "阅读两份自造资料，只在获准目录生成本地报告。",
+  "task_policy": {
+    "policy_version": "policy-1",
+    "allowed_effects": [
+      "READ",
+      "WRITE"
+    ],
+    "external_destinations": []
+  },
+  "host_constraints": {
+    "resource_scope_ids": [
+      "docs",
+      "reports"
+    ],
+    "destination_ids": [
+      "test_receiver"
+    ]
+  },
+  "current_object": {
+    "ref": {
+      "artifact_id": "doc-synthetic",
+      "version": 1,
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "content": "【纯假数据】本地测试报告已完成。"
+  },
+  "mandatory_facts": {
+    "data_restrictions": [
+      "local_analysis_only"
+    ],
+    "unresolved_risks": [],
+    "lineage": []
+  },
+  "evidence_blocks": [
+    {
+      "ref": {
+        "artifact_id": "task-synthetic",
+        "version": 1,
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "content": "阅读两份自造资料，只在获准目录生成本地报告。"
+    }
+  ],
+  "supplemental_history": [],
+  "available_evidence_refs": [],
+  "allowed_transform_ids": [
+    "mask_text_span",
+    "replace_json_string"
+  ],
+  "model_destination_id": "guard_cloud",
+  "authorized_model_destination_ids": [
+    "guard_cloud"
+  ]
+}

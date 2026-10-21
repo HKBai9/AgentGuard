@@ -1,0 +1,7 @@
+{
+  "synthetic": true,
+  "status": "FAILED",
+  "decision": null,
+  "runtime_expected": "REVIEW_PENDING / quarantine; no released content",
+  "reason": "所有故障保持隔离，不以异常兜底 ALLOW。"
+}

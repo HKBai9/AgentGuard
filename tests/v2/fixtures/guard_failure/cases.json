@@ -1,0 +1,132 @@
+[
+  {
+    "name": "timeout",
+    "transport_error": "MODEL_TIMEOUT",
+    "expected_reason": "MODEL_TIMEOUT"
+  },
+  {
+    "name": "malformed_json",
+    "raw": "{",
+    "expected_reason": "INVALID_SCHEMA"
+  },
+  {
+    "name": "duplicate_keys",
+    "raw": "{\"decision\":\"ALLOW\",\"decision\":\"BLOCK\"}",
+    "expected_reason": "INVALID_SCHEMA"
+  },
+  {
+    "name": "invalid_enum",
+    "path": [
+      "decision"
+    ],
+    "value": "APPROVE",
+    "expected_reason": "INVALID_SCHEMA"
+  },
+  {
+    "name": "old_schema",
+    "path": [
+      "schema_version"
+    ],
+    "value": "0.0",
+    "expected_reason": "INVALID_SCHEMA"
+  },
+  {
+    "name": "old_policy",
+    "path": [
+      "policy_version"
+    ],
+    "value": "policy-old",
+    "expected_reason": "INVALID_REFERENCE"
+  },
+  {
+    "name": "wrong_session",
+    "path": [
+      "session_id"
+    ],
+    "value": "another-session",
+    "expected_reason": "INVALID_REFERENCE"
+  },
+  {
+    "name": "wrong_call",
+    "path": [
+      "call_id"
+    ],
+    "value": "another-call",
+    "expected_reason": "INVALID_REFERENCE"
+  },
+  {
+    "name": "wrong_turn",
+    "path": [
+      "turn_id"
+    ],
+    "value": "another-turn",
+    "expected_reason": "INVALID_REFERENCE"
+  },
+  {
+    "name": "wrong_review",
+    "path": [
+      "review_id"
+    ],
+    "value": "another-review",
+    "expected_reason": "INVALID_REFERENCE"
+  },
+  {
+    "name": "old_context",
+    "path": [
+      "context_version"
+    ],
+    "value": "context-old",
+    "expected_reason": "INVALID_REFERENCE"
+  },
+  {
+    "name": "old_subject",
+    "path": [
+      "subject_ref",
+      "version"
+    ],
+    "value": 2,
+    "expected_reason": "INVALID_REFERENCE"
+  },
+  {
+    "name": "out_of_range",
+    "path": [
+      "evidence_refs"
+    ],
+    "value": [
+      {
+        "artifact_id": "doc-synthetic",
+        "version": 1,
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "span": [
+          0,
+          9999
+        ]
+      }
+    ],
+    "expected_reason": "INVALID_REFERENCE"
+  },
+  {
+    "name": "unknown_artifact",
+    "path": [
+      "evidence_refs"
+    ],
+    "value": [
+      {
+        "artifact_id": "other-artifact",
+        "version": 1,
+        "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+    ],
+    "expected_reason": "INVALID_REFERENCE"
+  },
+  {
+    "name": "invented_usage",
+    "path": [
+      "usage"
+    ],
+    "value": {
+      "input_tokens": 0
+    },
+    "expected_reason": "INVALID_SCHEMA"
+  }
+]

@@ -1,0 +1,9 @@
+{
+  "synthetic": true,
+  "decision": "REDACT",
+  "pointer": "/fake_secret",
+  "transform_id": "replace_json_string",
+  "document_label_after": "document_internal",
+  "runtime_expected": "A creates a new version only after transform authorization; document label persists",
+  "reason": "字段处理不解除文档级限制。"
+}

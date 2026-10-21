@@ -1,0 +1,44 @@
+{
+  "schema_version": "0.1",
+  "session_id": "session-synthetic",
+  "turn_id": "turn-1",
+  "review_id": "review-injection",
+  "call_id": "call-1",
+  "phase": "RESULT",
+  "policy_version": "policy-1",
+  "context_version": "context-1",
+  "subject_ref": {
+    "artifact_id": "doc-synthetic",
+    "version": 1,
+    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "decision": "BLOCK",
+  "reason_code": "UNTRUSTED_INSTRUCTION",
+  "reason_summary": "发现改变任务权限的外部指令。",
+  "evidence_refs": [
+    {
+      "artifact_id": "doc-synthetic",
+      "version": 1,
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ],
+  "findings": [
+    {
+      "finding_type": "instruction_in_tool_data",
+      "affected_action_field": null,
+      "evidence_refs": [
+        {
+          "artifact_id": "doc-synthetic",
+          "version": 1,
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "span": [
+            9,
+            41
+          ]
+        }
+      ]
+    }
+  ],
+  "redaction_targets": [],
+  "requested_evidence_refs": []
+}

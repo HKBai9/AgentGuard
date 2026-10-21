@@ -1,0 +1,51 @@
+{
+  "schema_version": "0.1",
+  "session_id": "session-synthetic",
+  "turn_id": "turn-1",
+  "review_id": "review-redact",
+  "call_id": "call-1",
+  "phase": "RESULT",
+  "policy_version": "policy-1",
+  "context_version": "context-1",
+  "subject_ref": {
+    "artifact_id": "doc-synthetic",
+    "version": 1,
+    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "decision": "REDACT",
+  "reason_code": "SENSITIVE_FIELD",
+  "reason_summary": "需要预批准的字段替换；整份文档仍为内部资料。",
+  "evidence_refs": [
+    {
+      "artifact_id": "doc-synthetic",
+      "version": 1,
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ],
+  "findings": [
+    {
+      "finding_type": "sensitive_field",
+      "affected_action_field": null,
+      "evidence_refs": [
+        {
+          "artifact_id": "doc-synthetic",
+          "version": 1,
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "json_pointer": "/fake_secret"
+        }
+      ]
+    }
+  ],
+  "redaction_targets": [
+    {
+      "evidence_ref": {
+        "artifact_id": "doc-synthetic",
+        "version": 1,
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "json_pointer": "/fake_secret"
+      },
+      "transform_id": "replace_json_string"
+    }
+  ],
+  "requested_evidence_refs": []
+}

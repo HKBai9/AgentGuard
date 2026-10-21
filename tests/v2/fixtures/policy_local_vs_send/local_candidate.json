@@ -1,0 +1,43 @@
+{
+  "schema_version": "0.1",
+  "session_id": "session-policy-local",
+  "base_policy_version": null,
+  "rules": [
+    {
+      "tool_id": "read_document",
+      "effect": "READ",
+      "resource_scope_ids": [
+        "docs"
+      ],
+      "destination_ids": [],
+      "allowed_uses": [
+        "local_analysis"
+      ],
+      "max_calls": 2
+    },
+    {
+      "tool_id": "write_report",
+      "effect": "WRITE",
+      "resource_scope_ids": [
+        "reports"
+      ],
+      "destination_ids": [],
+      "allowed_uses": [
+        "write_report"
+      ],
+      "max_calls": 1
+    }
+  ],
+  "model_destination_ids": [
+    "guard_cloud"
+  ],
+  "rationale": "真实任务只要求本地报告。",
+  "evidence_refs": [
+    {
+      "artifact_id": "task-synthetic",
+      "version": 1,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "unresolved_requirements": []
+}
