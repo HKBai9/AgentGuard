@@ -9,6 +9,12 @@ RESETS = ['messages', 'cloud_conversation', 'framework_checkpoints', 'memory', '
 def prepare(runtime, req):
     sid = req.session_id
     with runtime.store.transaction() as conn:
+        state = runtime.store.session(sid, conn)
+        if state['status'] == 'RECOVERING':
+            saved = runtime.store.get(sid, 'recovery_request', state['recovery_id'], conn)
+            if saved is not None and canonical(saved) == canonical(req):
+                return RecoveryPlan.model_validate_json(canonical(runtime.store.get(sid, 'recovery', state['recovery_id'], conn)))
+            raise RuntimeFault('RECOVERY_BINDING_MISMATCH')
         state, host, policy = runtime.active(sid, conn=conn)
         for ref in req.risk_refs:
             runtime.artifacts.whole_ref(sid, ref, conn)
@@ -67,6 +73,7 @@ def prepare(runtime, req):
             unknown_receipts=unknown)
         runtime.store.put(sid, 'context', safe.context_version, safe, conn)
         runtime.store.put(sid, 'recovery', plan.recovery_id, plan, conn)
+        runtime.store.put(sid, 'recovery_request', plan.recovery_id, req, conn)
         state.update(status='RECOVERING', recovery_id=plan.recovery_id,
             security_revision=state['security_revision']+1, risks=[r.model_dump(mode='json') for r in req.risk_refs])
         runtime.store.save_session(sid, state, conn)
@@ -79,6 +86,16 @@ def complete(runtime, ack):
     sid = ack.session_id
     with runtime.store.transaction() as conn:
         state = runtime.store.session(sid, conn)
+        committed = runtime.store.get(sid, 'recovery_ack', ack.recovery_id, conn)
+        if committed is not None:
+            plan = runtime.store.get(sid, 'recovery', ack.recovery_id, conn)
+            if (canonical(committed) == canonical(ack) and state['status'] == 'ACTIVE'
+                    and state['context_version'] == plan['safe_context_version']
+                    and state.get('host_context_id') == ack.new_host_context_id):
+                # A lost HTTP response is safe to replay; changed/stale ACKs
+                # cannot rebase an already advanced or different context.
+                return runtime.session_view(sid)
+            raise RuntimeFault('RECOVERY_BINDING_MISMATCH')
         if state['status'] != 'RECOVERING' or state['recovery_id'] != ack.recovery_id:
             raise RuntimeFault('RECOVERY_BINDING_MISMATCH')
         plan = RecoveryPlan.model_validate_json(canonical(runtime.store.get(sid, 'recovery', ack.recovery_id, conn)))

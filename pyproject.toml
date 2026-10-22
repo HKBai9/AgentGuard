@@ -31,7 +31,7 @@ yaml = ["PyYAML>=6.0"]
 demo = ["streamlit>=1.30", "PyYAML>=6.0"]
 # 开发/测试
 langchain = ["langchain-core==1.6.13"]
-gateway = ["fastapi==0.156.8", "uvicorn==0.54.0"]
+gateway = ["fastapi==0.156.8", "uvicorn==0.54.0", "httpx==0.28.1"]
 v2-console = ["streamlit==1.56.0", "graphviz==0.21"]
 mcp = ["mcp==1.28.1"]
 dev = ["pytest==9.1.1", "pytest-asyncio==1.4.0", "httpx==0.28.1", "build==1.6.1", "PyYAML==6.0.3"]

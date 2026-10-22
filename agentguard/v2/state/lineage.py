@@ -49,6 +49,22 @@ def check_use(labels, use, destination=None, model=False, catalog=None):
             raise RuntimeFault('CONFIDENTIALITY_DENIED')
 
 
+def check_write_labels(source, target):
+    """A persistent resource must preserve restrictions on derived content.
+
+    Without this check, a new session could read a private derived file with the
+    public labels of its directory and silently lose its original restrictions.
+    Resource labels are host-owned; a model cannot declassify by choosing a path.
+    """
+    source, target = effective(source), effective(target)
+    if not set(source.confidentiality) <= set(target.confidentiality):
+        raise RuntimeFault('RESOURCE_LABEL_DOWNGRADE')
+    for name in ('allowed_uses', 'destination_ids', 'model_destination_ids'):
+        restriction, retained = getattr(source, name), getattr(target, name)
+        if restriction is not None and (retained is None or not set(retained) <= set(restriction)):
+            raise RuntimeFault('RESOURCE_LABEL_DOWNGRADE')
+
+
 class Lineage:
     def __init__(self, store):
         self.store = store

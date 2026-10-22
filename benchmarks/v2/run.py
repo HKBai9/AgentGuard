@@ -23,6 +23,16 @@ from .variants import AllowReviewer, HostBoundPolicy, LegacyGate, PhaseReviewer,
 VARIANTS=('none','legacy','dual','v2','context-all','context-recent','no-labels','no-result','freeze')
 
 
+def read_all_events(store, session_id):
+    events, cursor = [], 0
+    while True:
+        page = store.events(session_id, cursor, 1000)
+        events.extend(page)
+        if len(page) < 1000:
+            return events
+        cursor = page[-1].seq
+
+
 class ScriptedAgent:
     """Scenario driver for wiring, explicitly NOT an inference model."""
     destination_id='agent'
@@ -98,7 +108,7 @@ async def run_case(case, variant, directory, *, settings=None, mode='scripted', 
             'recovery_attempted':False,'recovery_success':None,'redone_calls':len(world.calls)-len(set(map(str,world.calls))),
             'false_block':None}
         if hasattr(runtime,'store') and sid:
-            events=runtime.store.events(sid,0,1000)
+            events=read_all_events(runtime.store,sid)
             audit['events']=[e.model_dump(mode='json') for e in events]
             audit['recovery_attempted']=any(e.event_type=='RECOVERY_PREPARED' for e in events)
             audit['recovery_success']=any(e.event_type=='RECOVERY_COMPLETED' for e in events) if audit['recovery_attempted'] else None

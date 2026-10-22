@@ -13,6 +13,15 @@ def create_app(runtime, *, host_token: str, ui_token: str, allow_synthetic_conte
     app = FastAPI(title='AgentGuard v2', version='0.1', docs_url=None, redoc_url=None, openapi_url=None)
     request_schemas = {}
 
+    @app.middleware('http')
+    async def contain_unexpected_errors(request, call_next):
+        # Starlette's outer error handler re-raises after sending a response,
+        # which lets the server print exception text containing private values.
+        try:
+            return await call_next(request)
+        except Exception:
+            return JSONResponse({'schema_version': '0.1', 'reason_code': 'SERVICE_UNAVAILABLE'}, status_code=503)
+
     def body_schema(cls):
         schema = cls.model_json_schema(ref_template='#/components/schemas/{model}')
         request_schemas.update(schema.pop('$defs', {}))
@@ -43,9 +52,13 @@ def create_app(runtime, *, host_token: str, ui_token: str, allow_synthetic_conte
 
     async def body(request, cls, sid=None):
         authorize(request, write=True)
-        raw = await request.body()
-        if len(raw) > 4 * 1024 * 1024:
-            raise RuntimeFault('CONTENT_TOO_LARGE', 422)
+        chunks, size = [], 0
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > 4 * 1024 * 1024:
+                raise RuntimeFault('CONTENT_TOO_LARGE', 422)
+            chunks.append(chunk)
+        raw = b''.join(chunks)
         value = frozen_copy(cls, strict_loads(raw))
         if sid is not None and value.session_id != sid:
             raise RuntimeFault('SESSION_BINDING_MISMATCH')

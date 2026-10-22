@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from ..common import RuntimeFault, at_pointer
 from ..registry import Catalog
-from ..state.lineage import check_use, inherit
+from ..state.lineage import check_use, check_write_labels, inherit, public_labels
 
 @dataclass(frozen=True)
 class ActionFacts:
@@ -35,7 +35,7 @@ class PolicyEngine:
                 raise RuntimeFault('DESTINATION_OUT_OF_SCOPE')
             if effect == 'SEND' and destination is None:
                 raise RuntimeFault('DESTINATION_REQUIRED')
-            if effect == 'SEND' and not set(context.resource_scope_ids) <= set(rule.resource_scope_ids):
+            if effect in ('SEND', 'WRITE') and not set(context.resource_scope_ids) <= set(rule.resource_scope_ids):
                 raise RuntimeFault('ARTIFACT_SCOPE_DENIED')
             # Artifact contents must fit each effect's registered data scope.
             for art in artifacts:
@@ -44,6 +44,9 @@ class PolicyEngine:
             rules.append(rule.tool_id + ':' + rule.effect)
         labels = inherit([context.labels, *(a.labels for a in artifacts)])
         check_use(labels, call.use, destination, catalog=catalog)
+        if 'WRITE' in manifest.effects and destination is None:
+            target_labels = inherit(catalog.resources[s].labels for s in scopes) if scopes else public_labels()
+            check_write_labels(labels, target_labels)
         # Never dereference a mutable file to send it under an earlier approval.
         if 'SEND' in manifest.effects and manifest.resource_parameter:
             raise RuntimeFault('IMMUTABLE_ARTIFACT_REQUIRED')

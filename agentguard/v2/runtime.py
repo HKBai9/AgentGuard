@@ -69,6 +69,13 @@ class Runtime:
 
     async def create_session(self, req):
         req = frozen_copy(SessionRequest, req)
+        from pathlib import Path
+        private_roots = (self.store.path.parent.resolve(), self.artifacts.directory.resolve())
+        for resource in req.resource_catalog.resources:
+            if resource.kind == 'path':
+                root = Path(resource.root).resolve()
+                if any(root.is_relative_to(private) or private.is_relative_to(root) for private in private_roots):
+                    raise RuntimeFault('PRIVATE_STORAGE_EXPOSED', 422)
         if len({m.tool_id for m in req.tool_manifests}) != len(req.tool_manifests):
             raise RuntimeFault('DUPLICATE_TOOL', 422)
         for manifest in req.tool_manifests:
@@ -215,7 +222,8 @@ class Runtime:
                 raise RuntimeFault('STALE_CONTEXT')
             output = self.artifacts.create(sid, req.content, context.labels.model_copy(update={'integrity': sorted(set(context.labels.integrity+['model']))}),
                 resource_scope_ids=context.resource_scope_ids,
-                synthetic_demo=host.synthetic_demo and all(self.artifacts.metadata(sid, m.ref, conn).synthetic_demo for m in context.messages), conn=conn)
+                synthetic_demo=host.synthetic_demo and all(self.artifacts.metadata(sid,
+                    EvidenceRef.model_validate_json(canonical(r)), conn).synthetic_demo for r in model['input_refs']), conn=conn)
             output_ref = self.artifacts.ref(output)
             event = self.store.event(sid, 'MODEL_OUTPUT_RECORDED', {'artifact_id': output.artifact_id}, conn, turn_id=context.turn_id)
             for raw in model['input_refs']:
@@ -606,8 +614,13 @@ class Runtime:
             *[Catalog(host.resource_catalog).resources[s].labels for s in facts.scope_ids]])
         scopes = sorted(set(facts.scope_ids + context.resource_scope_ids + [s for a in metas for s in a.resource_scope_ids]))
         with self.store.transaction() as conn:
+            # A synthetic tool may echo real task/model input. Visibility follows
+            # every sticky dependency, not just the tool's fixture declaration.
+            synthetic = host.synthetic_demo and entry.manifest.synthetic_demo and all(
+                self.artifacts.metadata(sid, EvidenceRef.model_validate_json(canonical(r)), conn).synthetic_demo
+                for r in state['carry_refs']) and all(a.synthetic_demo for a in metas)
             meta = self.artifacts.create(sid, raw, labels, media_type=media, source_call_id=call.call_id,
-                resource_scope_ids=scopes, synthetic_demo=entry.manifest.synthetic_demo, conn=conn)
+                resource_scope_ids=scopes, synthetic_demo=synthetic, conn=conn)
             ref = self.artifacts.ref(meta)
             event = self.store.event(sid, 'RESULT_QUARANTINED', {'artifact_id': meta.artifact_id, 'version': meta.version}, conn,
                 turn_id=call.turn_id, call_id=call.call_id)

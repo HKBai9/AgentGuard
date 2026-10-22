@@ -152,10 +152,16 @@ class HostAdapter:
             return
         root = self._session_dir(state.session_id)
         root.mkdir(parents=True, exist_ok=True, mode=0o700)
-        temp = root / (new_id('checkpoint') + '.tmp')
-        temp.write_text(canonical(self._state_record(state)), encoding='utf-8')
-        temp.chmod(0o600)
-        os.replace(temp, root / 'checkpoint.json')
+        self._write_record(root / 'checkpoint.json', self._state_record(state))
+
+    def _write_record(self, path, value):
+        temp = path.with_name(new_id('state') + '.tmp')
+        with temp.open('x', encoding='utf-8') as handle:
+            temp.chmod(0o600)
+            handle.write(canonical(value))
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp, path)
 
     def _state_record(self, state):
         return {'session_id': state.session_id, 'context_id': state.context_id,
@@ -177,9 +183,11 @@ class HostAdapter:
         lock = self._locks.setdefault(session_id, asyncio.Lock())
         async with lock:
             state = self._state(session_id)
+            if self.directory and (self._session_dir(session_id) / 'recovery.json').exists():
+                raise RuntimeFault('HOST_RECOVERY_PENDING')
             if state.blocked_reason:
                 raise RuntimeFault(state.blocked_reason)
-            for _ in range(self.max_turns):
+            for _ in range(max(0, self.max_turns - state.turns)):
                 prepared = await self.runtime.prepare_model_turn(make(PrepareTurnRequest,
                     session_id=session_id, messages=state.messages, model_destination_id=self.model.destination_id))
                 # The adapter receives exactly these messages; no old provider state
@@ -192,12 +200,19 @@ class HostAdapter:
                     model_call_id=prepared.model_call_id, context_version=prepared.context_version,
                     content=reply.content, tool_proposals=list(reply.tool_proposals), usage=usage))
                 state.turns += 1
+                # Persist BEFORE any effect or final delivery. If the gateway
+                # response is lost, a restart must not replan with new call IDs.
+                state.blocked_reason = 'HOST_OPERATION_PENDING'
+                self._save(state)
                 if not proposed.calls:
                     result = await self.runtime.finalize(make(FinalizeRequest, session_id=session_id,
                         turn_id=prepared.turn_id, context_version=prepared.context_version, output_ref=proposed.output_ref))
                     if result.status=='BLOCKED' and result.risk_refs and self.recover_on_block and state.recoveries<self.max_recoveries:
                         await self._recover(state,result.risk_refs,'BLOCKED_FINAL_OUTPUT')
                         continue
+                    state.blocked_reason = ('HOST_TASK_COMPLETED' if result.status == 'RELEASED'
+                        else 'HOST_REVIEW_OR_EFFECT_PENDING' if result.status == 'REVIEW_PENDING'
+                        else 'HOST_FINAL_BLOCKED')
                     self._save(state)
                     return result
                 batch = await self.runtime.execute_batch(make(BatchRequest, session_id=session_id,
@@ -216,15 +231,19 @@ class HostAdapter:
                     else:
                         await self._feedback(state, result)
                         recover_refs.extend(result.risk_refs)
-                        if not result.risk_refs and result.receipt and result.receipt.artifact_ref:
+                        if result.status == 'BLOCKED' and not result.risk_refs and result.receipt and result.receipt.artifact_ref:
                             recover_refs.append(result.receipt.artifact_ref)
-                self._save(state)
                 if recover_refs and self.recover_on_block:
                     if state.recoveries>=self.max_recoveries:
                         state.blocked_reason='HOST_RECOVERY_LIMIT'
                         self._save(state)
                         raise RuntimeFault('HOST_RECOVERY_LIMIT')
                     await self._recover(state, recover_refs, 'BLOCKED_TOOL_RESULT')
+                else:
+                    state.blocked_reason = None
+                    self._save(state)
+            state.blocked_reason = 'HOST_TURN_LIMIT'
+            self._save(state)
             raise RuntimeFault('HOST_TURN_LIMIT')
 
     async def recover(self, session_id, risk_refs, reason_code='HOST_REQUESTED_RECOVERY'):
@@ -232,19 +251,38 @@ class HostAdapter:
             return await self._recover(self._state(session_id), risk_refs, reason_code)
 
     async def _recover(self, state, risk_refs, reason_code):
-        plan = await self.runtime.prepare_recovery(make(RecoveryRequest, session_id=state.session_id,
-            risk_refs=list(risk_refs), reason_code=reason_code))
+        state.blocked_reason = 'HOST_RECOVERY_PENDING'
+        self._save(state)
+        request = make(RecoveryRequest, session_id=state.session_id, risk_refs=list(risk_refs), reason_code=reason_code)
+        if self.directory:
+            journal = self._session_dir(state.session_id) / 'recovery.json'
+            if journal.exists():
+                raise RuntimeFault('HOST_RECOVERY_PENDING')
+            self._write_record(journal, {'request': request.model_dump(mode='json'),
+                'plan': None, 'state': self._state_record(state)})
+        plan = await self.runtime.prepare_recovery(request)
         return await self.apply_recovery(plan)
 
     async def apply_recovery(self, plan):
         state = self._state(plan.session_id)
+        state.blocked_reason = 'HOST_RECOVERY_PENDING'
         if self.directory:
             root = self._session_dir(plan.session_id)
             root.mkdir(parents=True, exist_ok=True, mode=0o700)
             journal = root / 'recovery.json'
-            if not journal.exists():
-                journal.write_text(canonical({'plan': plan.model_dump(mode='json'), 'state': self._state_record(state)}), encoding='utf-8')
-                journal.chmod(0o600)
+            if journal.exists():
+                saved = strict_loads(journal.read_text(encoding='utf-8'))
+                if saved['plan'] is None:
+                    saved['plan'] = plan.model_dump(mode='json')
+                    self._write_record(journal, saved)
+                elif saved['plan'] != plan.model_dump(mode='json'):
+                    raise RuntimeFault('HOST_RECOVERY_BINDING_MISMATCH')
+                if saved.get('ack') and not saved['ack']['unsupported'] and all(saved['ack']['completed_resets'].values()):
+                    # The server may have committed the ACK before our process
+                    # lost its response. Retry the identical durable ACK only.
+                    return await self._commit_recovery(plan, frozen_copy(RecoveryAck, saved['ack']), saved['state'])
+            else:
+                self._write_record(journal, {'plan': plan.model_dump(mode='json'), 'state': self._state_record(state)})
         completed, unsupported = {}, []
         # Conservatively clear all owned derived state; preserve only the safe
         # Runtime message references. External effects are reported by the plan.
@@ -291,9 +329,19 @@ class HostAdapter:
         state.context_id = new_id('host')
         ack = make(RecoveryAck, session_id=plan.session_id, recovery_id=plan.recovery_id,
             new_host_context_id=state.context_id, completed_resets=completed, unsupported=unsupported)
+        if self.directory:
+            self._write_record(journal, {'plan': plan.model_dump(mode='json'),
+                'state': self._state_record(state), 'ack': ack.model_dump(mode='json')})
+        return await self._commit_recovery(plan, ack, self._state_record(state))
+
+    async def _commit_recovery(self, plan, ack, saved):
         view = await self.runtime.complete_recovery(ack)
+        state = self._state(plan.session_id)
+        state.messages = [frozen_copy(Message, m) for m in saved['messages']]
+        state.work_products = [Path(p) for p in saved['work_products']]
+        state.context_id = ack.new_host_context_id
         state.blocked_reason = None
-        state.recoveries += 1
+        state.recoveries = saved.get('recoveries', 0) + 1
         self._save(state)
         if self.directory:
             (self._session_dir(plan.session_id) / 'recovery.json').unlink(missing_ok=True)
@@ -305,6 +353,9 @@ class HostAdapter:
         from ..contracts import RecoveryPlan
         async with self._locks.setdefault(session_id, asyncio.Lock()):
             journal = strict_loads((self._session_dir(session_id) / 'recovery.json').read_text(encoding='utf-8'))
+            if journal['plan'] is None:
+                plan = await self.runtime.prepare_recovery(frozen_copy(RecoveryRequest, journal['request']))
+                return await self.apply_recovery(plan)
             return await self.apply_recovery(frozen_copy(RecoveryPlan, journal['plan']))
 
     def register_work_product(self, session_id, path):
@@ -319,7 +370,9 @@ class HostAdapter:
         if not state.work_products:
             return True
         root = self._session_dir(state.session_id).resolve()
-        target = root / 'revoked-products'
+        target = (root / 'revoked-products').resolve()
+        if not target.is_relative_to(root) or target == root:
+            return False
         target.mkdir(exist_ok=True)
         # Verify every resolved absolute path BEFORE any move. Files only.
         from ..common import digest

@@ -1,0 +1,67 @@
+{
+  "baseline_commit": "7e77fa0",
+  "date": "2026-10-22",
+  "python": "3.12.12",
+  "platform": "Windows",
+  "new_regression_cases": 20,
+  "paid_api_calls": 0,
+  "checks": [
+    {
+      "name": "full_local_suite",
+      "command": "python -m pytest -o addopts= -p no:cacheprovider -q",
+      "counts": {
+        "tests": 384,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 2,
+        "passed": 382
+      },
+      "seconds": 228.61,
+      "skips": [
+        {
+          "test": "test_path_prefix_symlink_and_separator",
+          "reason": "symlink creation unavailable"
+        },
+        {
+          "test": "test_real_b_integration",
+          "reason": "Live cloud factory/credentials not configured; offline A/B integration has separate tests"
+        }
+      ]
+    },
+    {
+      "name": "final_host_regression",
+      "command": "python -m pytest tests/v2/integration/test_audit_regressions.py tests/v2/integration/test_feature_completion.py -o addopts= -p no:cacheprovider -q",
+      "counts": {
+        "tests": 36,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 36
+      },
+      "seconds": 35.089,
+      "skips": []
+    }
+  ],
+  "note": "Scopes overlap. Full suite precedes final host checkpoint ordering/path containment adjustment; the final host regression covers that adjustment.",
+  "wheel": {
+    "sha256": "b0ce5661e01579451a20cf4e9e725f19be2ddb6d3656cf9bb3796120330c0c22",
+    "installation": "fresh temporary target outside source checkout, dependencies from existing locked environment",
+    "checks": {
+      "schema": "0.1",
+      "runtime_smoke": "passed",
+      "guard_modules_imported": true,
+      "legacy_yaml_loaded": true,
+      "new_modules": "installed new entrypoints OK"
+    }
+  },
+  "compileall": "passed",
+  "pip_check": "passed",
+  "diff_check": "passed",
+  "not_run": [
+    "paid cloud model integration",
+    "competition scenarios",
+    "full external AgentDojo environment",
+    "live UI visual acceptance",
+    "competition effectiveness and cost experiments"
+  ]
+}

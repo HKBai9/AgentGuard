@@ -2,6 +2,8 @@
 
 Python 3.12。生产装配默认使用云端 API，启动不会自动执行任务。`start_v2.ps1` 从仓库根目录运行；不要把隔离库和状态目录放进 Agent 可读写的工作目录。
 
+配置检查与 Runtime 会拒绝工具资源目录和私有存储目录的重叠（包括互为父子目录）。不能把整个项目根目录作为工具根目录，同时又把私有状态放在该根目录下面。
+
 ## 安装和配置
 
 ```powershell
@@ -25,6 +27,8 @@ $env:AGENTGUARD_AGENT_API_KEY = '<真实密钥>'
 不自动读取 `.env`。`.env.v2.example` 仅列出配置名，默认关闭云端；真实 `.env.v2` 已被 Git 忽略。`max_attempts` 限制每个客户端的尝试数，`max_tokens` 为可选 token 上限；用量未知时不按零费用处理。示例不会自动配置任何网络接收器。
 
 配置可加入 `resources` 登记受限子目录及 DataLabels；整份文档和字段限制按已有 Runtime 规则传播。`transforms` 只接受宿主登记的 mask_span/mask_json_string 变换；示例 `mask_text` 只遮盖文字，不降低文档权限。只有确知字段来源的宿主，才应配置允许降低限制的字段集合。
+
+WRITE 的目标资源必须保留源上下文的保密性、用途和接收端限制，否则返回 `RESOURCE_LABEL_DOWNGRADE`。例如，读过 private 资料后不能把派生文本写进 public 目录；应由宿主预先登记具有相应限制的输出目录。这样后续新会话重新读取文件时，限制不会丢失。宿主仍负责使不同会话对同一外部资源采用一致的标签。
 
 ## 原生宿主与网关
 
@@ -53,6 +57,10 @@ $env:AGENTGUARD_UI_TOKEN = '<另一个只读凭据>'
 ```powershell
 .venv-v2/Scripts/python.exe -m agentguard.v2.application --config config/v2.example.json --gateway http://127.0.0.1:8765 --task '阅读工作目录资料，写出报告，不发送。'
 ```
+
+该模式只在宿主侧保存消息引用与恢复记录，不建立另一套本地 Runtime 数据库或隔离库。安装网关额外依赖 `pip install '.[gateway]'` 包含 HTTP 客户端依赖。
+
+原生 CLI 和网关 CLI 对同一状态目录取得操作系统文件锁；已有服务持锁时第二个执行进程会拒绝启动。重启取得独占权后，遗留 CLAIMED 标记为 UNKNOWN，不重新执行，并清理遗留活动操作记录。直接嵌入 Runtime 的 SDK 宿主必须使用 `agentguard.v2.state.ownership.exclusive_worker` 管理完整进程生命周期，再调用 `runtime.permits.recover_abandoned()`；不要对仍有执行器工作的数据库调用此方法。关闭程序时须先等待执行线程退出，再释放独占权。
 
 宿主循环严格执行 prepare_model_turn → 主模型 → record_model_output → execute_batch/finalize。主模型以 JSON 提议工具，执行器只在 Runtime 内；下一轮通过对象引用读取获准版本。工具之间的内部模型文字被登记，不展示给用户；原生循环根据任务和已释放观察重新规划，不暗中复用供应商会话/思考链。
 
@@ -96,6 +104,10 @@ await restarted_host.resume_recovery(session_id)
 ```
 
 重置项包括 messages/cloud_conversation/framework_checkpoints/memory/analysis_cache/work_products。任何一步不支持或失败，Ack 不完整，Runtime 保持 RECOVERING。完整 Ack 后才保存新 checkpoint。UNKNOWN 或 REVIEW_PENDING 会让宿主停下，不能反复 run 重新发送可能已执行的副作用。恢复计划中的不可逆回执需要操作者另行处理。
+
+宿主在发送工具批次或最终输出请求之前先持久化 `HOST_OPERATION_PENDING`。网络中断或进程退出后，不会重新规划同一任务并换用新的 call_id。恢复请求、计划和 Ack 也写入原子恢复日志：计划响应或 Ack 响应丢失后可调用 `resume_recovery`；Runtime 只接受绑定完全一致且仍在对应恢复上下文的重复请求。完成的任务不能再次 `run`，总轮数也不会因重启重新计数。没有启用 state_directory 的嵌入式宿主只有进程内状态，不具有重启续接能力。
+
+已知没有产生副作用的读文件失败返回 FAILED_KNOWN，让模型获得有限错误码后继续规划；它不会被误报成已外发状态未知，也不会触发无意义的上下文恢复。
 
 ## 控制台和回放
 

@@ -53,7 +53,17 @@ def load_settings(path):
     for key in ('workspace', 'state_directory'):
         value = Path(settings[key])
         settings[key] = str((path.parent / value).resolve() if not value.is_absolute() else value.resolve())
+    validate_storage_layout(settings)
     return settings
+
+
+def validate_storage_layout(settings):
+    """Keep the vault, credentials/checkpoints and writable tool roots disjoint."""
+    private = Path(settings['state_directory']).resolve()
+    roots = [Path(settings['workspace']).resolve()]
+    roots.extend(Path(r['root']).resolve() for r in settings.get('resources', []) if r.get('kind') == 'path')
+    if any(private.is_relative_to(root) or root.is_relative_to(private) for root in roots):
+        raise ValueError('Private state_directory must be disjoint from all tool resource roots')
 
 
 def cloud(config, *, max_attempts=1000, max_tokens=None, budget=None):
@@ -79,10 +89,18 @@ def workspace_tools(settings):
         return resolved
 
     def read_text(path):
-        value = checked(path)
-        if value.stat().st_size > settings.get('max_review_bytes', 96_000):
-            raise RuntimeFault('CONTENT_TOO_LARGE')
-        return value.read_text(encoding='utf-8')
+        from .execution.executor import KnownToolFailure
+        try:
+            value = checked(path)
+            limit = settings.get('max_review_bytes', 96_000)
+            # Bound the actual read too: the file can grow after stat().
+            with value.open('rb') as handle:
+                raw = handle.read(limit + 1)
+            if len(raw) > limit:
+                raise KnownToolFailure('CONTENT_TOO_LARGE')
+            return raw.decode('utf-8')
+        except (OSError, UnicodeError, RuntimeFault):
+            raise KnownToolFailure('READ_FAILED_BEFORE_EFFECT') from None
 
     def write_text(path, body):
         value = checked(path)
@@ -93,8 +111,12 @@ def workspace_tools(settings):
         return 'written'
 
     def list_files(path):
-        value = root if Path(path).resolve() == root else checked(path)
-        return [str(p.resolve()) for p in sorted(value.iterdir()) if p.is_file() and p.resolve().is_relative_to(root)][:1000]
+        from .execution.executor import KnownToolFailure
+        try:
+            value = root if Path(path).resolve() == root else checked(path)
+            return [str(p.resolve()) for p in sorted(value.iterdir()) if p.is_file() and p.resolve().is_relative_to(root)][:1000]
+        except (OSError, RuntimeFault):
+            raise KnownToolFailure('READ_FAILED_BEFORE_EFFECT') from None
 
     destinations = {d['destination_id']: d['address'] for d in settings.get('network_destinations', [])}
 
@@ -128,7 +150,8 @@ def workspace_tools(settings):
     return registry
 
 
-def compose(settings, task=''):
+def compose(settings, task='', *, runtime=None):
+    validate_storage_layout(settings)
     if settings.get('tool_factory'):
         # Explicit deployment configuration only; never passed by model/user task.
         import importlib
@@ -145,8 +168,9 @@ def compose(settings, task=''):
         Reviewer(guard, cache=AnalysisCache()))
     transforms = [TransformSpec(item['transform_id'],item['kind'],frozenset(item.get('allowed_pointers',[])),
         frozenset(item.get('declassify_fields',[]))) for item in settings.get('transforms',[])]
-    runtime = build_runtime(settings['state_directory'], registry=registry,
-        policy_generator=PolicyCompiler(guard), guard_service=service,transforms=transforms)
+    if runtime is None:
+        runtime = build_runtime(settings['state_directory'], registry=registry,
+            policy_generator=PolicyCompiler(guard), guard_service=service,transforms=transforms)
     resources = [make(ResourceScope, scope_id='workspace', kind='path', root=settings['workspace'], labels=public_labels('external'))]
     for resource in settings.get('resources', []):
         resources.append(frozen_copy(ResourceScope, resource))
@@ -180,14 +204,20 @@ def main():
     parser.add_argument('--task', required=True)
     parser.add_argument('--gateway', help='Use gateway RuntimePort instead of local dispatch')
     args = parser.parse_args()
+    from contextlib import ExitStack
+    ownership = ExitStack()
 
     async def run():
-        app = compose(load_settings(args.config), args.task)
+        from .state.ownership import exclusive_worker
         remote = None
         try:
             if args.gateway:
                 from .adapters.http import GatewayRuntime
                 remote = GatewayRuntime(args.gateway, os.environ['AGENTGUARD_HOST_TOKEN'])
+            app = compose(load_settings(args.config), args.task, runtime=remote)
+            if remote is None:
+                ownership.enter_context(exclusive_worker(app.runtime.store.path.parent))
+                app.runtime.permits.recover_abandoned()
             host = app.host(remote)
             session = await host.create(app.request)
             result = await host.run(session.session_id)
@@ -205,6 +235,10 @@ def main():
         code = exc.code if isinstance(exc,RuntimeFault) else exc.reason_code if isinstance(exc,GuardError) else 'HOST_FAILED'
         print(canonical({'status': 'FAILED', 'reason_code': code}))
         raise SystemExit(1) from None
+    finally:
+        # asyncio.run first joins remaining synchronous worker threads. Only
+        # then may another process take ownership and reconcile abandoned work.
+        ownership.close()
 
 
 if __name__ == '__main__':
