@@ -1,6 +1,6 @@
-# v2 Guard 开发验证指南（B01—B03）
+# v2 Guard 与应用指南
 
-更新：2026-10-22。当前交付已统一 A/B 公共类型，真实 Runtime 与 Guard 首阶段组件可进行离线联调；云端响应仍以脚本替代。可安装的是 v2 开发版，不是已完成全部比赛功能的成品。没有运行真实模型效果实验，没有拦截率或费用结论；逐项状态见 [集成验收报告](v2/INTEGRATION_REVIEW_2026-10-22.md)。
+更新：2026-10-22。在此前 A/B 集成基础上，已补齐长任务上下文、原生/HTTP/LangChain 宿主、实际恢复、只读控制台和评测/场景程序。主入口见 [操作说明](v2/OPERATIONS.md)，实现清单见 [功能补齐记录](v2/FEATURE_COMPLETION.md)。本轮依用户要求不开展演示与真实云端效果验收，没有新增拦截率或费用结论。以下保留 Guard 接口和本地开发检查方法。
 
 ## 默认离线运行
 
@@ -65,8 +65,8 @@ guard = GuardService(ContextBuilder(), Reviewer(client))
 已登记资源的超配额候选可能通过 B 的格式检查，必须由 A 拒绝。
 
 ContextBuilder 是纯函数，保留完整本次对象、可信任务和所有安全事实；不裁剪本次内容。
-它记录材料序列化字节数（不是 token 数），超限返回 CONTENT_TOO_LARGE。
-客户端另外限制整个 HTTP 请求字节数。当前尚未实现 B04 的关系排序和长历史压缩。
+它记录实际提示序列化字节数（不是 token 数），必保留项超限返回 CONTENT_TOO_LARGE。
+客户端另外限制整个 HTTP 请求字节数。all/recent/relations 可切换，历史正文可选择或形成带引用的非权威摘录，安全事实不因最近 N 条限制而消失。
 ACTION 不能 REDACT；RESULT/FINAL 只提出变换目标，B 不产出可交付的改写全文。
 
 NEEDS_CONTEXT 只接受 A 预先列出的既有证据引用，不读取文件、URL 或调用工具。
@@ -76,11 +76,11 @@ Runtime 已负责补证据循环，最多一次，使用 `supplemental_attempt` 
 受控审计存储中记录和脱敏展示。默认不记录正文；**不要把这个 sink 接普通日志或开放 UI**。
 模型的 reason_summary 也属于不可信模型输出，不能作为普通日志的安全文本。
 普通用量记录只包含模型、提示版本、尝试次数、耗时、用量和错误码。
-当前完全不缓存模型分析或执行许可，避免未确定公共绑定语义时复用旧结果。
+现有可选 AnalysisCache 仅缓存经过校验的模型分析，绑定会话/任务/策略/上下文/安全版本/主体/证据/模型目的地/提示版本，回读仍重验；不缓存执行许可。恢复会清理该会话分析缓存。
 
 ## 显式启用云端传输检查
 
-当前实现固定 DeepSeek HTTPS `/chat/completions`，模型名由宿主配置；没有工具定义、
+默认 DeepSeek HTTPS `/chat/completions`，现可由宿主配置兼容 HTTPS endpoint，模型名由宿主配置；没有工具定义、
 重定向、环境代理或自主调用循环。JSON 模式和请求格式依据供应商的
 [Chat Completions 文档](https://api-docs.deepseek.com/api/create-chat-completion/)与
 [JSON Output 文档](https://api-docs.deepseek.com/guides/json_mode/)，查阅于 2026-10-21。
@@ -126,4 +126,4 @@ Budget 同时限制尝试次数和可选 token 预算；并发请求先保守预
 | MISSING_EVIDENCE | 材料不全、补证据仍不足或重复补充；由 A 保持阻断/隔离 |
 | BUDGET_EXHAUSTED | 次数/token 上限或未知 token 用量；不能绕过审查继续释放 |
 
-2026-10-22 已完成公共契约、离线 A/B 联调和开发版安装验证；真实模型效果、实际宿主、UI 与比赛评测仍待完成。请以集成验收报告的逐项状态为准。
+此前的集成验收与本轮功能实现分别记录，不能把历史验证数字当成本轮云端效果。当前宿主、UI、评测程序和启动入口见功能补齐记录；真实模型效果、外部整环境评测和比赛实验仍未运行。

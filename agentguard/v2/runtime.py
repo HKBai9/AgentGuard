@@ -74,6 +74,14 @@ class Runtime:
         for manifest in req.tool_manifests:
             if self.registry.get(manifest.tool_id, manifest.manifest_version).manifest != manifest:
                 raise RuntimeFault('TOOL_NOT_HOST_CONFIRMED')
+        reviewer = getattr(self.guard, 'reviewer', None)
+        client = getattr(reviewer, 'client', None)
+        if client is not None and hasattr(client, 'config'):
+            from .review.reviewers import authorize_destination
+            try:
+                authorize_destination(req.model_dump(mode='json'), client)
+            except Exception:
+                raise RuntimeFault('MODEL_DESTINATION_DENIED') from None
         sid = new_id('session')
         generation = make(PolicyGenerationRequest, session_id=sid, trusted_task=req.trusted_task,
             host_policy=req.host_policy, tool_manifests=req.tool_manifests, resource_catalog=req.resource_catalog,
@@ -90,13 +98,16 @@ class Runtime:
         if candidate.evidence_refs:
             raise RuntimeFault('INVALID_REFERENCE')
         with self.store.transaction() as conn:
-            task = self.artifacts.create(sid, req.trusted_task, public_labels('trusted_user'), conn=conn)
+            task = self.artifacts.create(sid, req.trusted_task, public_labels('trusted_user'), synthetic_demo=req.synthetic_demo, conn=conn)
             task_ref = self.artifacts.ref(task)
             self.artifacts.release(sid, task_ref, conn)
             self.store.save_session(sid, {'request': req.model_dump(mode='json'), 'status': 'ACTIVE',
                 'policy_version': policy.policy_version, 'context_version': None, 'security_revision': 0,
                 'task_ref': task_ref.model_dump(mode='json'), 'carry_refs': [], 'risks': [], 'recovery_id': None}, conn)
             self.store.put(sid, 'policy', policy.policy_version, policy, conn)
+            for index, item in enumerate(getattr(self.generator, 'usage_records', [])):
+                if item.get('session_id') == sid:
+                    self.store.put(sid, 'policy_usage', 'policy_'+str(index), item['usage'], conn)
             self.store.event(sid, 'SESSION_CREATED', {}, conn)
         return self.session_view(sid)
 
@@ -130,6 +141,17 @@ class Runtime:
             self.artifacts.release(sid, self.artifacts.ref(meta), conn)
             self.store.event(sid, 'HOST_INPUT_REGISTERED', {'artifact_id': meta.artifact_id}, conn)
         return self.artifacts.ref(meta)
+
+    async def register_host_input(self, req):
+        req = frozen_copy(HostInputRequest, req)
+        return self.ingest(req.session_id, req.content, req.labels, resource_scope_ids=req.resource_scope_ids,
+            media_type=req.media_type, synthetic_demo=req.synthetic_demo)
+
+    async def clear_analysis_cache(self, session_id):
+        self.store.session(session_id)
+        if hasattr(self.guard, 'clear_session'):
+            self.guard.clear_session(session_id)
+        return True
 
     async def prepare_model_turn(self, req):
         req = frozen_copy(PrepareTurnRequest, req)
@@ -192,7 +214,8 @@ class Runtime:
             if context.policy_version != policy.policy_version or context.relevant_security_revision != state['security_revision']:
                 raise RuntimeFault('STALE_CONTEXT')
             output = self.artifacts.create(sid, req.content, context.labels.model_copy(update={'integrity': sorted(set(context.labels.integrity+['model']))}),
-                resource_scope_ids=context.resource_scope_ids, conn=conn)
+                resource_scope_ids=context.resource_scope_ids,
+                synthetic_demo=host.synthetic_demo and all(self.artifacts.metadata(sid, m.ref, conn).synthetic_demo for m in context.messages), conn=conn)
             output_ref = self.artifacts.ref(output)
             event = self.store.event(sid, 'MODEL_OUTPUT_RECORDED', {'artifact_id': output.artifact_id}, conn, turn_id=context.turn_id)
             for raw in model['input_refs']:
@@ -201,8 +224,10 @@ class Runtime:
             for proposal in req.tool_proposals:
                 call = make(ToolCall, session_id=sid, turn_id=context.turn_id, call_id=new_id('call'),
                     input_context_version=context.context_version, **proposal.model_dump(exclude={'schema_version'}))
-                action = self.artifacts.create(sid, call.args, output.labels, media_type='application/json',
-                    source_call_id=call.call_id, resource_scope_ids=context.resource_scope_ids, conn=conn)
+                action = self.artifacts.create(sid, {'tool_id': call.tool_id, 'manifest_version': call.manifest_version,
+                    'args': call.args}, output.labels, media_type='application/json',
+                    source_call_id=call.call_id, resource_scope_ids=context.resource_scope_ids,
+                    synthetic_demo=output.synthetic_demo, conn=conn)
                 action_ref = self.artifacts.ref(action)
                 self.store.put(sid, 'call', call.call_id, call, conn)
                 self.store.put(sid, 'action_ref', call.call_id, action_ref, conn)
@@ -210,6 +235,8 @@ class Runtime:
                 calls.append(call)
             proposed = make(ProposedTurn, session_id=sid, turn_id=context.turn_id, output_ref=output_ref, calls=calls)
             self.store.put(sid, 'model_output', req.model_call_id, {'request_digest': digest(req), 'proposal': proposed.model_dump(mode='json')}, conn)
+            if req.usage:
+                self.store.put(sid, 'model_usage', req.model_call_id, req.usage, conn)
             self.store.put(sid, 'output_binding', output.artifact_id, {'turn_id': context.turn_id, 'context_version': context.context_version}, conn)
         return proposed
 
@@ -252,18 +279,36 @@ class Runtime:
             raise RuntimeFault('STALE_CONTEXT')
         task_ref = EvidenceRef.model_validate_json(canonical(state['task_ref']))
         refs = self.lineage.closure(sid, [subject_ref], reverse=True)
-        unique = {(r.artifact_id, r.version): r for r in [task_ref, *refs]}
+        risk_refs = [EvidenceRef.model_validate_json(canonical(r)) for r in state['risks']]
+        required_keys = {(r.artifact_id, r.version) for r in [task_ref, *refs, *risk_refs]}
+        history = [EvidenceRef.model_validate_json(canonical(r)) for r in self.store.all(sid, 'action_ref')]
+        history += [EvidenceRef.model_validate_json(canonical(o['proposal']['output_ref']))
+                    for o in self.store.all(sid, 'model_output')]
+        with self.store.connect() as conn:
+            # Audits and arbitrary host-private blobs are not review history.
+            history += [self.artifacts.ref(ArtifactVersion.model_validate_json(r[0])) for r in conn.execute(
+                'SELECT meta FROM artifacts WHERE session=? ORDER BY rowid', (sid,))
+                if strict_loads(r[0])['source_call_id'] is not None]
+        unique = {(r.artifact_id, r.version): r for r in [*history, task_ref, *refs, *risk_refs]}
         evidence = []
+        evidence_resources = []
         for ref in unique.values():
             meta = self.artifacts.whole_ref(sid, ref)
             # Guard itself is a data destination and never gets an implicit exemption.
-            self.engine.model(host.host_policy.guard_destination_id, policy, host, [meta], use='review')
+            try:
+                self.engine.model(host.host_policy.guard_destination_id, policy, host, [meta], use='review')
+            except RuntimeFault:
+                if (ref.artifact_id, ref.version) in required_keys:
+                    raise
+                continue
             evidence.append(make(EvidenceBlock, ref=ref, content=self.artifacts.read(sid, ref), labels=meta.labels,
                 role='subject' if ref == subject_ref else ('task' if ref == task_ref else 'related')))
+            evidence_resources.append({'ref': ref.model_dump(mode='json'), 'resource_scope_ids': meta.resource_scope_ids})
         subject = self.artifacts.read(sid, subject_ref)
         facts = {'labels': self.artifacts.metadata(sid, subject_ref).labels.model_dump(mode='json'),
             'source_labels': [{'ref': e.ref.model_dump(mode='json'), 'labels': e.labels.model_dump(mode='json')} for e in evidence],
             'unresolved_risks': state['risks'], 'ancestor_refs': [r.model_dump(mode='json') for r in refs],
+            'evidence_resources': evidence_resources,
             'resource_scope_ids': context.resource_scope_ids, 'tool_id': None, 'use': None, 'destination_id': None}
         if call_id:
             saved = self.store.get(sid, 'call', call_id)
@@ -277,9 +322,14 @@ class Runtime:
             context_version=context_version, relevant_security_revision=state['security_revision'], subject_ref=subject_ref,
             subject=subject, mandatory_facts=facts, evidence=evidence,
             lineage=[e for e in self.lineage.edges(sid) if (e.target_ref.artifact_id, e.target_ref.version) in keys],
-            recent_events=[], supplemental_attempt=0,
+            recent_events=[e.model_dump(mode='json') for e in self.store.events(sid,
+                max(0, self._event_count(sid)-12), 12)], supplemental_attempt=0,
             allowed_transform_ids=sorted(self.artifacts.transforms),
             available_evidence_refs=[e.ref for e in evidence])
+
+    def _event_count(self, sid):
+        with self.store.connect() as conn:
+            return conn.execute('SELECT COALESCE(MAX(seq),0) FROM events WHERE session=?', (sid,)).fetchone()[0]
 
     def _validate_decision(self, decision, material):
         bindings = ['review_id', 'session_id', 'turn_id', 'call_id', 'phase', 'context_version', 'subject_ref']
@@ -327,7 +377,8 @@ class Runtime:
         for attempt in range(2):
             failure = None
             outcome = None
-            if len(canonical(material).encode('utf-8')) > material.host_policy.max_review_bytes:
+            if (not getattr(self.guard, 'supports_context_budgeting', False) and
+                    len(canonical(material).encode('utf-8')) > material.host_policy.max_review_bytes):
                 failure = 'CONTENT_TOO_LARGE'
             elif self.guard is None:
                 failure = 'SERVICE_UNAVAILABLE'
@@ -347,14 +398,18 @@ class Runtime:
                     failure = 'INVALID_SCHEMA'
                 except Exception:
                     failure = 'SERVICE_UNAVAILABLE'
+            trace = self.guard.take_trace(material.review_id, attempt) if hasattr(self.guard, 'take_trace') else None
             with self.store.transaction() as conn:
                 usage = (outcome.decision.usage if outcome and outcome.decision and not failure else
                          outcome.failure.usage if outcome and outcome.failure else None)
+                if usage is None and trace and trace.get('usage'):
+                    usage = Usage.model_validate_json(canonical(trace['usage']))
                 # Complete material/outcome live in the private immutable vault;
                 # the console only sees IDs, positions and numeric usage.
                 audit_labels = inherit([e.labels for e in material.evidence])
                 audit = self.artifacts.create(sid, {'material': material.model_dump(mode='json'),
-                    'outcome': outcome.model_dump(mode='json') if outcome else None, 'failure': failure},
+                    'outcome': outcome.model_dump(mode='json') if outcome else None, 'failure': failure,
+                    'actual_request': trace},
                     audit_labels, media_type='application/json', conn=conn)
                 # UI receives only this allowlisted summary, never free-form model text.
                 summary = {'review_id': material.review_id, 'phase': phase, 'attempt': attempt,
@@ -362,7 +417,11 @@ class Runtime:
                     'decision': outcome.decision.decision if outcome and outcome.decision and not failure else None,
                     'reason_code': failure or safe_code(outcome.decision.reason_code),
                     'usage': usage.model_dump(mode='json', exclude={'provider', 'model'}) if usage else None,
-                    'evidence_refs': [e.ref.model_dump(mode='json') for e in material.evidence],
+                    'evidence_refs': (trace['request']['selected_evidence_refs'] if trace else
+                        [e.ref.model_dump(mode='json') for e in material.evidence]),
+                    'prompt_bytes': trace['request']['budget_used'] if trace else None,
+                    'cache_hit': trace['cache_hit'] if trace else False,
+                    'submitted': trace['submitted'] if trace else False,
                     'audit_ref': self.artifacts.ref(audit).model_dump(mode='json')}
                 self.store.put(sid, 'review', material.review_id, summary, conn, replace=True)
                 self.store.put(sid, 'review_attempt', material.review_id+':'+str(attempt), summary, conn)
@@ -387,12 +446,37 @@ class Runtime:
                         extra.append(make(EvidenceBlock, ref=whole, content=self.artifacts.read(sid, whole), labels=meta.labels, role='related'))
             except RuntimeFault:
                 return None, 'MISSING_EVIDENCE'
-            material = material.model_copy(update={'supplemental_attempt': 1, 'evidence': extra})
+            material = material.model_copy(update={'supplemental_attempt': 1, 'evidence': extra,
+                'mandatory_facts': {**material.mandatory_facts,
+                    'requested_evidence_refs': [r.model_dump(mode='json') for r in decision.requested_evidence_refs]}})
         return None, 'MISSING_EVIDENCE'
 
-    def _result(self, call, status, code, *, content=None, ref=None, receipt=None):
+    def _decision_risks(self, sid, decision):
+        if decision is None or decision.decision != 'BLOCK':
+            return []
+        cited = [r for f in decision.findings for r in f.evidence_refs]
+        subject = (decision.subject_ref.artifact_id, decision.subject_ref.version)
+        origins = [r for r in cited if (r.artifact_id, r.version) != subject and
+                   set(self.artifacts.metadata(sid, r).labels.integrity) & {'external', 'model'}]
+        # When ACTION/FINAL locates only the derived subject, model provenance
+        # cannot identify one causal token. Conservatively rebase all released
+        # external ancestors; the host never treats this as an exact dependency.
+        if not origins and decision.phase in ('ACTION', 'FINAL'):
+            for ref in self.lineage.closure(sid, [decision.subject_ref], reverse=True):
+                meta = self.artifacts.metadata(sid, ref)
+                if 'external' in meta.labels.integrity and self.artifacts.is_released(sid, ref):
+                    origins.append(ref)
+        if not origins:
+            origins = [decision.subject_ref]
+        unique = {}
+        for ref in origins:
+            whole = self.artifacts.ref(self.artifacts.metadata(sid, ref))
+            unique[(whole.artifact_id, whole.version)] = whole
+        return list(unique.values())
+
+    def _result(self, call, status, code, *, content=None, ref=None, receipt=None, risk_refs=()):
         return make(CallResult, session_id=call.session_id, turn_id=call.turn_id, call_id=call.call_id,
-            status=status, reason_code=code, content=content, artifact_ref=ref, receipt=receipt)
+            status=status, reason_code=code, content=content, artifact_ref=ref, receipt=receipt, risk_refs=list(risk_refs))
 
     async def execute_batch(self, req):
         req = frozen_copy(BatchRequest, req)
@@ -472,7 +556,8 @@ class Runtime:
                         self.lineage.add(sid, self.artifacts.ref(meta), action_ref, 'possible', event.event_id, conn)
             decision, code = await self.inspect(sid, call.turn_id, call.call_id, 'ACTION', action_ref, call.input_context_version)
             if decision is None or decision.decision != 'ALLOW':
-                return self._result(call, 'REVIEW_PENDING' if decision is None else 'BLOCKED', code)
+                return self._result(call, 'REVIEW_PENDING' if decision is None else 'BLOCKED', code,
+                    risk_refs=self._decision_risks(sid, decision))
             # A fresh state read after the model wait prevents stale approvals.
             _, host, policy, context = self.action_state(call)
             facts, metas = self.action_facts(call, host, policy, context)
@@ -535,7 +620,8 @@ class Runtime:
         else:
             decision, code = await self.inspect(sid, call.turn_id, call.call_id, 'RESULT', ref, call.input_context_version)
             if decision is None or decision.decision == 'BLOCK':
-                result = self._result(call, 'REVIEW_PENDING' if decision is None else 'BLOCKED', code, receipt=receipt)
+                result = self._result(call, 'REVIEW_PENDING' if decision is None else 'BLOCKED', code, receipt=receipt,
+                    risk_refs=self._decision_risks(sid, decision))
             else:
                 try:
                     released, content = self._release(sid, ref, decision, call.input_context_version, final=False)
@@ -611,7 +697,8 @@ class Runtime:
                 status = 'RELEASED'
             except RuntimeFault as exc:
                 code = exc.code
-        result = make(FinalizedOutput, session_id=req.session_id, status=status, reason_code=code, content=content, artifact_ref=target)
+        result = make(FinalizedOutput, session_id=req.session_id, status=status, reason_code=code, content=content, artifact_ref=target,
+            risk_refs=self._decision_risks(req.session_id, decision))
         with self.store.transaction() as conn:
             if self.store.get(req.session_id, 'final', req.output_ref.artifact_id, conn) is None:
                 self.store.put(req.session_id, 'final', req.output_ref.artifact_id, result, conn)

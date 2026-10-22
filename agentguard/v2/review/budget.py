@@ -17,6 +17,7 @@ class Budget:
         self.attempts = 0
         self.tokens = 0
         self.usage_unavailable = False
+        self.exhausted = False
         self._reserved = 0
         self._lock = asyncio.Lock()
         self._records = []
@@ -26,6 +27,7 @@ class Budget:
             if (self.attempts >= self.max_attempts or
                 (self.max_tokens is not None and
                  (self.usage_unavailable or self.tokens + self._reserved + upper_bound > self.max_tokens))):
+                self.exhausted = True
                 raise GuardError("BUDGET_EXHAUSTED")
             self.attempts += 1
             self._reserved += upper_bound

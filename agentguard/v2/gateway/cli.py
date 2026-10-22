@@ -20,7 +20,8 @@ def main():
     if not host_token or not ui_token or host_token == ui_token:
         parser.error('Set distinct AGENTGUARD_HOST_TOKEN and AGENTGUARD_UI_TOKEN')
     runtime = getattr(importlib.import_module(module), name)()
-    app = create_app(runtime, host_token=host_token, ui_token=ui_token)
+    app = create_app(runtime, host_token=host_token, ui_token=ui_token,
+        allow_synthetic_content=os.environ.get('AGENTGUARD_V2_SYNTHETIC_UI') == '1')
     # Host write bodies may contain private inputs; access logs omit payloads.
     uvicorn.run(app, host=args.host, port=args.port, access_log=False)
 

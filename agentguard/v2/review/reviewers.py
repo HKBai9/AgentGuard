@@ -15,6 +15,12 @@ def authorize_destination(req, client):
         client.destination_id not in {g['destination_id'] for g in host['model_destination_ids']} or
         client.destination_id not in {g['destination_id'] for g in policy['model_destination_ids']}):
         raise GuardError("MODEL_DESTINATION_DENIED")
+    if 'resource_catalog' in req and hasattr(client, 'config'):
+        from ..registry import normalize_endpoint
+        destination = next((d for d in req['resource_catalog']['destinations']
+                            if d['destination_id'] == client.destination_id), None)
+        if destination is None or normalize_endpoint(destination['address']) != normalize_endpoint(client.config.endpoint):
+            raise GuardError('MODEL_DESTINATION_DENIED')
 
 
 def validate_analysis(data, req):
@@ -80,11 +86,16 @@ def validate_analysis(data, req):
 
 
 class Reviewer:
-    def __init__(self, client, *, contracts=None, request_sink=None):
+    def __init__(self, client, *, contracts=None, request_sink=None, cache=None):
         self.client = client
         self.contracts = contracts if contracts is not None else PublicContracts()
         # Explicit host-owned protected trace sink, NEVER an ordinary logger.
         self.request_sink = request_sink
+        self.cache = cache
+        self._traces = {}
+
+    def take_trace(self, review_id, supplemental_attempt):
+        return self._traces.pop((review_id, supplemental_attempt), None)
 
     async def review(self, req):
         data = versioned(self.contracts.parse("ReviewRequest", payload(req)))
@@ -94,15 +105,45 @@ class Reviewer:
         evidence_index(data)
         authorize_destination(data, self.client)
         messages = review_messages(data)
+        trace = {'request': data, 'binding': bindings(data), 'prompt_version': PROMPT_VERSION,
+                 'model': self.client.model, 'destination_id': self.client.destination_id,
+                 'messages': messages, 'cache_hit': False, 'submitted': False}
+        self._traces[(data['review_id'], data['supplemental_attempt'])] = trace
+        if len(self._traces) > 256:
+            del self._traces[next(iter(self._traces))]
+        model_identity = '|'.join((getattr(self.client, 'provider', ''), self.client.model,
+                                  getattr(getattr(self.client, 'config', None), 'endpoint', '')))
+        cache_key = self.cache.key(data, model=model_identity, destination_id=self.client.destination_id,
+                                   prompt_version=PROMPT_VERSION) if self.cache else None
+        cached = self.cache.get(cache_key) if self.cache else None
+        if cached is not None:
+            cached.update(bindings(data))
+            validate_analysis(cached, data)
+            trace['cache_hit'] = True
+            cached['usage'] = wire_usage({'provider': 'cache', 'model': self.client.model,
+                'input_tokens': 0, 'output_tokens': 0, 'latency_ms': 0.0, 'attempts': 0})
+            return self.contracts.parse('ReviewDecision', cached)
         if self.request_sink is not None:
             self.request_sink(payload({"binding": bindings(data),
                                        "prompt_version": PROMPT_VERSION,
                                        "model": self.client.model,
                                        "destination_id": self.client.destination_id,
                                        "messages": messages}))
-        reply = await self.client.complete(messages=messages, purpose=data["phase"],
-                                           prompt_version=PROMPT_VERSION)
+        trace['submitted'] = None  # Cancellation may leave transport state unknown.
+        try:
+            reply = await self.client.complete(messages=messages, purpose=data["phase"], prompt_version=PROMPT_VERSION)
+        except GuardError as exc:
+            if exc.usage:
+                trace['usage'] = wire_usage(exc.usage)
+                trace['submitted'] = exc.usage['attempts'] > 0
+            elif exc.reason_code in ('CONTENT_TOO_LARGE','MODEL_CONFIGURATION_ERROR','MODEL_DESTINATION_DENIED'):
+                trace['submitted'] = False
+            raise
+        trace['submitted'] = True
+        trace['usage'] = wire_usage(reply.usage)
         analysis = strict_json(reply.content)
         validate_analysis(analysis, data)
+        if self.cache and analysis['decision'] != 'NEEDS_CONTEXT':
+            self.cache.put(cache_key, analysis)
         analysis["usage"] = wire_usage(reply.usage)
         return self.contracts.parse("ReviewDecision", analysis)

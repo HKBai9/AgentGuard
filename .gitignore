@@ -55,6 +55,7 @@ pytest-cache-files-*/
 /*.pem
 /*.key
 /.env
+/.env.v2
 /.git-credentials
 /.ssh/
 

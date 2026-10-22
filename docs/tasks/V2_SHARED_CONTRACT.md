@@ -1,6 +1,6 @@
 # AgentGuard v2 双人共享接口约定
 
-日期：2026-10-21；集成更新：2026-10-22；契约版本：`0.1`。公共类型已落实到 `agentguard/v2/contracts.py`，机器可读 Schema 在 `agentguard/v2/schemas/`。本文件保留设计说明；精确字段以下述集成约定及代码为准，尚未完成的功能见 [验收报告](../v2/INTEGRATION_REVIEW_2026-10-22.md)。
+日期：2026-10-21；集成及功能补齐：2026-10-22；契约版本：`0.1`。公共类型在 `agentguard/v2/contracts.py`，Schema 在 `agentguard/v2/schemas/`。本轮新增为兼容的可选元数据和宿主专用接口；精确字段以代码为准。功能状态见 [补齐记录](../v2/FEATURE_COMPLETION.md)，历史核查见 [集成验收报告](../v2/INTEGRATION_REVIEW_2026-10-22.md)。
 
 合并前 A/B 各自使用了不兼容的 0.1 草案；本次统一为一套公共类型，旧 B 临时字典不再是可接受的生产输入，不维护双格式兼容层。具体冻结项：
 
@@ -8,9 +8,12 @@
 - PolicyGenerationRequest 使用 `current_policy_version`；候选仍用 `base_policy_version`。初始策略生成早于任务对象登记，因此初始候选 `evidence_refs=[]`，不得编造尚不存在的任务对象引用。
 - 模型授权为 `ModelDestinationGrant(destination_id, resource_scope_ids)`，保留端点对应的数据范围。ResourceCatalog 使用 `resources` 和 `destinations`，模型端点也是目的地的一种。
 - ContextMaterial 使用 `subject/subject_ref`、`evidence`、`policy`、`host_policy`、`lineage`、`recent_events`；授权变换和可补证据由 Runtime 填入 `allowed_transform_ids`、`available_evidence_refs`。B 不自行生成授权。
-- ReviewRequest 额外包含 `selected_evidence_refs`、`retained_mandatory_facts`、`budget_used`。当前 budget_used 是 UTF-8 材料字节数，不是 token 数；关系选择尚未实现。
+- ReviewRequest 额外包含 `selected_evidence_refs`、`retained_mandatory_facts`、`budget_used`。budget_used 是实际提示的 UTF-8 序列化字节数，不是 token 数；all/recent/relations 均保留完整当前对象及安全事实。
 - Usage 缺失用量用 null；供应商客户端内部的 unavailable 在边界统一转换。ReviewFailure 带 `usage: null` 或实测元数据，并支持配置错误、供应商不可用、模型目的地拒绝三个独立原因码。
 - Runtime 每次审查最多补证据一次，`supplemental_attempt` 随材料传递并记录审查事件；Guard 不执行证据读取。
+- 新增 HostInputRequest：可信宿主登记静态系统材料/有限状态反馈；HTTP 路径 `/host-inputs`，UI 无写入权限。ModelOutputRequest 可带实际 Usage；SessionRequest.synthetic_demo 默认为 false。CallResult/FinalizedOutput 可携带经验证的 risk_refs 驱动真实宿主恢复，原文仍不随未释放结果返回。
+- ACTION 的隔离主体是 `{tool_id, manifest_version, args}`。affected_action_field 是 args 内指针，例如 `/destination`；EvidenceRef 对完整隔离对象定位，例如 `/args/destination`，两者不混用。
+- 实际请求私有审计区记录选中证据、提示版本、缓存命中和 submitted 状态；submitted=null 表示取消等情况下传输状态未知，不能记成未调用。
 
 关联：[总任务书](../V2_TWO_PERSON_PLAN.md)｜[A 任务书](V2_A_RUNTIME.md)｜[B 任务书](V2_B_GUARD.md)。安全与架构底线以 [实施计划](../V2_IMPLEMENTATION_PLAN.md) 为准。
 

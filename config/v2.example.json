@@ -1,0 +1,41 @@
+{
+  "workspace": "../examples/v2/workspace",
+  "state_directory": "../.agentguard-v2",
+  "guard": {
+    "provider": "deepseek",
+    "endpoint": "https://api.deepseek.com/chat/completions",
+    "model": "deepseek-chat",
+    "api_key_env": "AGENTGUARD_GUARD_API_KEY",
+    "destination_id": "guard",
+    "timeout_seconds": 60.0,
+    "max_concurrency": 4,
+    "max_retries": 1,
+    "max_output_tokens": 4096,
+    "max_input_bytes": 600000
+  },
+  "agent": {
+    "provider": "deepseek",
+    "endpoint": "https://api.deepseek.com/chat/completions",
+    "model": "deepseek-chat",
+    "api_key_env": "AGENTGUARD_AGENT_API_KEY",
+    "destination_id": "agent",
+    "timeout_seconds": 60.0,
+    "max_concurrency": 1,
+    "max_retries": 1,
+    "max_output_tokens": 4096,
+    "max_input_bytes": 600000
+  },
+  "network_destinations": [],
+  "max_turns": 60,
+  "max_calls": 200,
+  "max_review_bytes": 512000,
+  "context_strategy": "relations",
+  "recent_n": 8,
+  "max_attempts": 500,
+  "max_tokens": null,
+  "recover_on_block": true,
+  "synthetic_demo": true,
+  "confirmed_authorizations": ["Read and write the synthetic example workspace only."],
+  "resources": [],
+  "transforms": [{"transform_id":"mask_text","kind":"mask_span","allowed_pointers":[],"declassify_fields":[]}]
+}

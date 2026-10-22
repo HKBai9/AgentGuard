@@ -30,14 +30,17 @@ yaml = ["PyYAML>=6.0"]
 # 演示界面
 demo = ["streamlit>=1.30", "PyYAML>=6.0"]
 # 开发/测试
-langchain = ["langchain-core"]
+langchain = ["langchain-core==1.6.13"]
 gateway = ["fastapi==0.156.8", "uvicorn==0.54.0"]
+v2-console = ["streamlit==1.56.0", "graphviz==0.21"]
 mcp = ["mcp==1.28.1"]
 dev = ["pytest==9.1.1", "pytest-asyncio==1.4.0", "httpx==0.28.1", "build==1.6.1", "PyYAML==6.0.3"]
 
 [project.scripts]
 agentguard = "agentguard.cli:main"
 agentguard-v2 = "agentguard.v2.gateway.cli:main"
+agentguard-v2-agent = "agentguard.v2.application:main"
+agentguard-v2-console = "agentguard.v2.console:main"
 
 [project.urls]
 Homepage = "https://github.com/HKBai9/AgentGuard"

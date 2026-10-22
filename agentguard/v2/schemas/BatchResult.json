@@ -8,6 +8,13 @@
           "title": "Schema Version",
           "type": "string"
         },
+        "risk_refs": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "title": "Risk Refs",
+          "type": "array"
+        },
         "session_id": {
           "maxLength": 200,
           "minLength": 1,

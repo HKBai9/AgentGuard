@@ -581,6 +581,11 @@
       "title": "Schema Version",
       "type": "string"
     },
+    "synthetic_demo": {
+      "default": false,
+      "title": "Synthetic Demo",
+      "type": "boolean"
+    },
     "trusted_task": {
       "minLength": 1,
       "title": "Trusted Task",

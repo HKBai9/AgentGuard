@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 import os
 import socket
 import time
+from urllib.parse import urlsplit
 from urllib import error, request
 
 from .boundary import dumps, payload, strict_json
@@ -29,8 +30,15 @@ class CloudConfig:
     max_input_bytes: int = 128_000
     max_response_bytes: int = 1_000_000
     retry_delay_seconds: float = 0.25
+    endpoint: str = 'https://api.deepseek.com/chat/completions'
+    provider: str = 'deepseek'
 
     def __post_init__(self):
+        endpoint = urlsplit(self.endpoint)
+        if (endpoint.scheme != 'https' or not endpoint.hostname or endpoint.username or
+                endpoint.password or endpoint.query or endpoint.fragment or
+                any(ord(c) <= 32 for c in self.endpoint) or not self.provider):
+            raise GuardError('MODEL_CONFIGURATION_ERROR')
         if self.enabled is not True or not self.api_key.strip() or not self.model.strip():
             raise GuardError("MODEL_CONFIGURATION_ERROR")
         if any(c in self.api_key for c in "\r\n") or not self.destination_id:
@@ -56,6 +64,8 @@ class CloudConfig:
                 timeout_seconds=float(os.environ.get("AGENTGUARD_V2_TIMEOUT_SECONDS", "30")),
                 max_concurrency=int(os.environ.get("AGENTGUARD_V2_CONCURRENCY", "2")),
                 max_retries=int(os.environ.get("AGENTGUARD_V2_RETRIES", "1")),
+                endpoint=os.environ.get('AGENTGUARD_V2_ENDPOINT', 'https://api.deepseek.com/chat/completions'),
+                provider=os.environ.get('AGENTGUARD_V2_PROVIDER', 'deepseek'),
             )
         except ValueError:
             raise GuardError("MODEL_CONFIGURATION_ERROR") from None
@@ -104,7 +114,7 @@ class JsonHTTPTransport:
     def _post(self, body, config):
         opener = request.build_opener(request.ProxyHandler({}), _NoRedirect())
         req = request.Request(
-            "https://api.deepseek.com/chat/completions",
+            config.endpoint,
             data=dumps(body).encode("utf-8"),
             headers={"Authorization": "Bearer " + config.api_key,
                      "Content-Type": "application/json", "Accept": "application/json"},
@@ -145,16 +155,17 @@ class CloudClient:
     def __init__(self, config, *, budget=None, transport=None):
         self.config = config
         self.model = config.model
+        self.provider = config.provider
         self.destination_id = config.destination_id
         self.budget = budget if budget is not None else Budget()
         self.transport = transport if transport is not None else JsonHTTPTransport()
         self._semaphore = asyncio.Semaphore(config.max_concurrency)
 
     async def complete(self, *, messages, purpose, prompt_version):
-        if purpose not in ("policy", "ACTION", "RESULT", "FINAL"):
+        if purpose not in ("policy", "ACTION", "RESULT", "FINAL", "agent"):
             raise GuardError("INVALID_SCHEMA")
         if not messages or any(set(m) != {"role", "content"} or
-                               m["role"] not in ("system", "user") or
+                               m["role"] not in (("system", "user", "assistant") if purpose == 'agent' else ("system", "user")) or
                                not isinstance(m["content"], str) for m in messages):
             raise GuardError("INVALID_SCHEMA")
         body = {"model": self.model, "messages": payload({"messages": messages})["messages"], "stream": False,
@@ -167,9 +178,17 @@ class CloudClient:
         reservation = input_bytes + 1024 + self.config.max_output_tokens
         total_in, total_out, unknown = 0, 0, False
         start = time.monotonic()
+        def measured(attempts):
+            return {'provider':self.provider,'model':self.model,
+                'input_tokens':'unavailable' if unknown else total_in,
+                'output_tokens':'unavailable' if unknown else total_out,
+                'latency_ms':round((time.monotonic()-start)*1000,3),'attempts':attempts}
         for attempt in range(1, self.config.max_retries + 2):
             async with self._semaphore:
-                await self.budget.reserve(reservation)
+                try:
+                    await self.budget.reserve(reservation)
+                except GuardError as exc:
+                    raise GuardError(exc.reason_code, usage=measured(attempt-1)) from None
                 tick = time.monotonic()
                 record = {"provider": self.provider, "model": self.model,
                           "purpose": purpose, "prompt_version": prompt_version,
@@ -223,7 +242,8 @@ class CloudClient:
                     if self.budget.max_tokens is not None and (
                         unknown or self.budget.tokens > self.budget.max_tokens
                     ):
-                        raise GuardError("BUDGET_EXHAUSTED")
+                        self.budget.exhausted = True
+                        raise GuardError("BUDGET_EXHAUSTED", usage=measured(attempt))
                     return CloudReply(content, {
                         "provider": self.provider, "model": self.model,
                         "input_tokens": "unavailable" if unknown else total_in,
@@ -232,6 +252,6 @@ class CloudClient:
                         "attempts": attempt,
                     })
                 if not retry or attempt > self.config.max_retries:
-                    raise GuardError(record["error"]) from None
+                    raise GuardError(record["error"], usage=measured(attempt)) from None
             await asyncio.sleep(self.config.retry_delay_seconds)
         raise AssertionError("unreachable")

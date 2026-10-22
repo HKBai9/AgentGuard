@@ -10,11 +10,23 @@ from .prompts import bindings
 
 
 class GuardService:
+    supports_context_budgeting = True
+
     def __init__(self, builder, reviewer, *, contracts=None):
         self.builder = builder
         self.reviewer = reviewer
         self.contracts = contracts if contracts is not None else PublicContracts()
         self._refilled = set()
+
+    def take_trace(self, review_id, supplemental_attempt):
+        return self.reviewer.take_trace(review_id, supplemental_attempt)
+
+    def clear_session(self, session_id):
+        if self.reviewer.cache:
+            self.reviewer.cache.clear_session(session_id)
+        for key,value in list(self.reviewer._traces.items()):
+            if value['binding']['session_id']==session_id:
+                del self.reviewer._traces[key]
 
     async def inspect(self, material):
         return await self._inspect(material, second=False)
@@ -31,7 +43,7 @@ class GuardService:
                 "schema_version": "0.1", "status": "DECIDED", "decision": decision, "failure": None,
             })
         except GuardError as exc:
-            return self._failure(exc.reason_code)
+            return self._failure(exc.reason_code, exc.usage)
         except (KeyError, TypeError, ValueError, AttributeError, RecursionError):
             return self._failure("INVALID_SCHEMA")
         except ContractUnavailable:
@@ -74,10 +86,13 @@ class GuardService:
             return self._failure(exc.reason_code)
         except (KeyError, TypeError, ValueError):
             return self._failure("INVALID_SCHEMA")
+        supplied['mandatory_facts'] = {**supplied['mandatory_facts'], 'requested_evidence_refs': requested}
         return await self._inspect(supplied, second=True)
 
-    def _failure(self, code):
-        failure = self.contracts.parse("ReviewFailure", {"schema_version": "0.1", "reason_code": code, "usage": None})
+    def _failure(self, code, usage=None):
+        from .boundary import wire_usage
+        failure = self.contracts.parse("ReviewFailure", {"schema_version": "0.1", "reason_code": code,
+            "usage": wire_usage(usage) if usage else None})
         return self.contracts.parse("ReviewOutcome", {
             "schema_version": "0.1", "status": "FAILED", "decision": None, "failure": payload(failure),
         })

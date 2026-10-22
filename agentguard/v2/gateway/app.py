@@ -7,7 +7,7 @@ from ..common import RuntimeFault, canonical, strict_loads, frozen_copy
 from ..contracts import *
 
 
-def create_app(runtime, *, host_token: str, ui_token: str):
+def create_app(runtime, *, host_token: str, ui_token: str, allow_synthetic_content=False):
     if not host_token or not ui_token or host_token == ui_token:
         raise ValueError('Distinct nonempty host and UI credentials are required')
     app = FastAPI(title='AgentGuard v2', version='0.1', docs_url=None, redoc_url=None, openapi_url=None)
@@ -64,6 +64,7 @@ def create_app(runtime, *, host_token: str, ui_token: str):
         return await runtime.create_session(await body(request, SessionRequest))
 
     for path, cls, method, response in [
+        ('host-inputs', HostInputRequest, runtime.register_host_input, EvidenceRef),
         ('model-turns/prepare', PrepareTurnRequest, runtime.prepare_model_turn, PreparedTurn),
         ('model-outputs', ModelOutputRequest, runtime.record_model_output, ProposedTurn),
         ('batches', BatchRequest, runtime.execute_batch, BatchResult),
@@ -71,6 +72,11 @@ def create_app(runtime, *, host_token: str, ui_token: str):
         ('recovery-plans', RecoveryRequest, runtime.prepare_recovery, RecoveryPlan),
         ('recovery-acks', RecoveryAck, runtime.complete_recovery, SessionView)]:
         add_write(path, cls, method, response)
+
+    @app.post('/v2/sessions/{id}/analysis-cache/reset')
+    async def reset_cache(id: str, request: Request):
+        authorize(request, write=True)
+        return {'schema_version': '0.1', 'cleared': await runtime.clear_analysis_cache(id)}
 
     @app.get('/v2/openapi.json')
     async def openapi(request: Request):
@@ -81,6 +87,21 @@ def create_app(runtime, *, host_token: str, ui_token: str):
     async def session(id: str, request: Request):
         authorize(request)
         return runtime.session_view(id)
+
+    @app.get('/v2/sessions')
+    async def sessions(request: Request, offset: int = 0, limit: int = 100):
+        authorize(request)
+        if offset < 0 or not 1 <= limit <= 1000:
+            raise RuntimeFault('INVALID_PAGINATION', 422)
+        with runtime.store.connect() as conn:
+            ids = [r[0] for r in conn.execute('SELECT id FROM sessions ORDER BY rowid DESC LIMIT ? OFFSET ?', (limit, offset))]
+        return [runtime.session_view(sid) for sid in ids]
+
+    @app.get('/v2/sessions/{id}/reviews')
+    async def reviews(id: str, request: Request):
+        authorize(request)
+        runtime.session_view(id)
+        return runtime.store.all(id, 'review_attempt')
 
     @app.get('/v2/sessions/{id}/events')
     async def events(id: str, request: Request, after_seq: int = 0, limit: int = 100):
@@ -109,6 +130,33 @@ def create_app(runtime, *, host_token: str, ui_token: str):
             raise RuntimeFault('REVIEW_NOT_FOUND', 404)
         return value
 
+    @app.get('/v2/sessions/{id}/reviews/{review_id}/input')
+    async def review_input(id: str, review_id: str, request: Request, attempt: int = 0):
+        authorize(request)
+        runtime.session_view(id)
+        summary = runtime.store.get(id, 'review_attempt', review_id+':'+str(attempt))
+        if summary is None:
+            raise RuntimeFault('REVIEW_NOT_FOUND', 404)
+        ref = EvidenceRef.model_validate_json(canonical(summary['audit_ref']))
+        audit = runtime.artifacts.read(id, ref)
+        trace = audit.get('actual_request')
+        if trace is None:
+            return {'schema_version': '0.1', 'available': False, 'reason_code': 'NO_ACTUAL_REQUEST'}
+        material = ContextMaterial.model_validate_json(canonical(audit['material']))
+        _, host, _ = runtime.components(id)
+        raw = bool(allow_synthetic_content and host.synthetic_demo and all(
+            runtime.artifacts.metadata(id, b.ref).synthetic_demo for b in material.evidence))
+        result = {'schema_version': '0.1', 'available': True, 'synthetic_content_visible': raw,
+            'prompt_version': trace['prompt_version'], 'submitted': trace['submitted'],
+            'cache_hit': trace['cache_hit'], 'budget_used': trace['request']['budget_used'],
+            'selected_evidence_refs': trace['request']['selected_evidence_refs'],
+            'retained_security_facts': {k: material.mandatory_facts[k] for k in
+                ('labels', 'source_labels', 'unresolved_risks', 'ancestor_refs')},
+            'messages': trace['messages'] if raw else [dict(role=m['role'], content='[REDACTED]') for m in trace['messages']]}
+        if raw:
+            result['request'] = trace['request']
+        return result
+
     @app.get('/v2/sessions/{id}/metrics')
     async def metrics(id: str, request: Request):
         authorize(request)
@@ -118,7 +166,20 @@ def create_app(runtime, *, host_token: str, ui_token: str):
         return {'schema_version': '0.1', 'executions': states,
             'reviews': len(runtime.store.all(id, 'review')), 'review_attempts': len(runtime.store.all(id, 'review_attempt')),
             'usage': [r['usage'] for r in runtime.store.all(id, 'review_attempt')],
+            'model_usage': runtime.store.all(id, 'model_usage'),
+            'policy_usage': runtime.store.all(id, 'policy_usage'),
             'recovery_plans': runtime.store.all(id, 'recovery'), 'recovery_acks': runtime.store.all(id, 'recovery_ack_attempt')}
+
+    @app.get('/v2/sessions/{id}/artifacts')
+    async def artifacts(id: str, request: Request):
+        authorize(request)
+        runtime.session_view(id)
+        with runtime.store.connect() as conn:
+            metas = [ArtifactVersion.model_validate_json(r[0]) for r in
+                conn.execute('SELECT meta FROM artifacts WHERE session=? ORDER BY rowid', (id,))]
+        return [dict(artifact_id=m.artifact_id, version=m.version, sha256=m.sha256,
+                     source_call_id=m.source_call_id, labels=m.labels.model_dump(mode='json'),
+                     synthetic_demo=m.synthetic_demo, released=runtime.artifacts.is_released(id, runtime.artifacts.ref(m))) for m in metas]
 
     @app.get('/v2/sessions/{id}/artifacts/{artifact_id}/versions/{version}/comparison')
     async def comparison(id: str, artifact_id: str, version: int, request: Request):
@@ -129,8 +190,17 @@ def create_app(runtime, *, host_token: str, ui_token: str):
         if not row:
             raise RuntimeFault('ARTIFACT_NOT_FOUND', 404)
         meta = ArtifactVersion.model_validate_json(row[0])
+        visible = bool(allow_synthetic_content and meta.synthetic_demo)
+        with runtime.store.connect() as conn:
+            versions = [ArtifactVersion.model_validate_json(r[0]) for r in conn.execute(
+                'SELECT meta FROM artifacts WHERE session=? AND id=? ORDER BY version', (id, artifact_id))]
         return {'schema_version': '0.1', 'artifact_id': meta.artifact_id, 'version': meta.version, 'sha256': meta.sha256,
-            'released': runtime.artifacts.is_released(id, runtime.artifacts.ref(meta)), 'content': '[REDACTED]'}
+            'released': runtime.artifacts.is_released(id, runtime.artifacts.ref(meta)),
+            'synthetic_content_visible': visible,
+            'content': runtime.artifacts.read(id, runtime.artifacts.ref(meta)) if visible else '[REDACTED]',
+            'versions': [{'version': m.version, 'sha256': m.sha256,
+                'released': runtime.artifacts.is_released(id, runtime.artifacts.ref(m)),
+                'content': runtime.artifacts.read(id, runtime.artifacts.ref(m)) if allow_synthetic_content and m.synthetic_demo else '[REDACTED]'} for m in versions]}
 
     original_openapi = app.openapi
     def complete_openapi():

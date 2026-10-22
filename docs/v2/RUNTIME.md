@@ -3,7 +3,7 @@
 契约 `0.1`，发行包 `2.0.0a1`，Python **3.12**。代码位于本仓库 `agentguard/v2/`。
 旧版 SDK 实现保留，旧实验和 UI 不代表 v2 效果。源码仓库外的同名草稿目录不参与构建。
 
-2026-10-22 集成更新：A 的运行时已合入 B 的 compiler、GuardService，并统一公共契约。`tests/v2/integration/test_guard_runtime.py` 使用真实 A/B 组件，仅将云端推理换成脚本响应；这证明程序连接与失败处理，不证明模型识别效果。`test_optional_b.py` 只在显式配置真实云端 factory 时运行。宿主/框架钩子、UI 和比赛评测仍未完成，逐项见 [集成验收报告](INTEGRATION_REVIEW_2026-10-22.md)。
+2026-10-22 集成后补齐：原生/HTTP/LangChain 宿主、恢复钩子、长任务上下文、只读 UI、评测与场景程序已接入，入口见 [操作说明](OPERATIONS.md) 和 [功能清单](FEATURE_COMPLETION.md)。此前 `test_guard_runtime.py` 的离线联调与历史报告继续保留；本轮暂缓真实云端/演示/比赛效果实验，不将程序测试视为模型效果。
 
 ## 安装与验收
 

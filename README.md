@@ -1,6 +1,6 @@
 # AgentGuard · 面向安全 Agent 的边界逃逸检测与风险隔离机制
 
-> **v2 集成开发版（2.0.0a1 / Python 3.12）**：合入 A 的安全运行时与 B 的首阶段 Guard。任务完成度、接口联调和实际验证结果见 [集成验收报告](docs/v2/INTEGRATION_REVIEW_2026-10-22.md)。安装与边界见 [运行时文档](docs/v2/RUNTIME.md)。尚未完成的宿主、界面与比赛评测不计为已交付能力。
+> **v2 功能开发版（2.0.0a1 / Python 3.12）**：已补长任务证据选择、原生/HTTP/LangChain 宿主、实际恢复、六视图控制台、独立评测与五类场景入口。当前入口见 [操作说明](docs/v2/OPERATIONS.md)，逐项实现见 [功能补齐记录](docs/v2/FEATURE_COMPLETION.md)。本轮按用户要求暂缓演示与真实云端效果验收，不提供新增比赛成绩。此前合并记录见 [集成验收报告](docs/v2/INTEGRATION_REVIEW_2026-10-22.md)。
 >
 > 保留 1.1.1 的第一阶段基础修复，详见 [docs/STAGE1.md](docs/STAGE1.md)。下文和仓库中的历史 DEMO 数据不代表 v2 实验成绩。
 
@@ -360,4 +360,5 @@ python tools/collect_evidence.py                        # 汇总证据到 experi
 ├── docs/                        原理解析 / 设计 / 证据 / 接入指南 / 产品化 / 申报书素材
 │   └── CAPABILITY.md            ★ L0/LT 设计文档（理论对照与工程边界）
 └── tools/                       依赖引导、启动脚本、UI 冒烟测试等工程脚本
+```
 

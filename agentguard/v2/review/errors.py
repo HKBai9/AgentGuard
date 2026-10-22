@@ -2,8 +2,9 @@
 
 
 class GuardError(Exception):
-    def __init__(self, reason_code: str):
+    def __init__(self, reason_code: str, *, usage=None):
         self.reason_code = reason_code
+        self.usage = usage
         super().__init__(reason_code)
 
 

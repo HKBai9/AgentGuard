@@ -158,6 +158,7 @@ class PolicyGenerationRequest(Wire):
 
 
 class SessionRequest(Wire):
+    synthetic_demo: bool = False
     trusted_task: str = Field(min_length=1)
     host_policy: HostPolicy
     resource_catalog: ResourceCatalog
@@ -270,6 +271,15 @@ class ContextMaterial(Wire):
         if (self.phase == 'FINAL') != (self.call_id is None):
             raise ValueError('FINAL has no call_id; ACTION/RESULT require call_id')
         return self
+
+
+class HostInputRequest(Wire):
+    session_id: ID
+    content: Any
+    labels: DataLabels
+    resource_scope_ids: list[ID]
+    media_type: Literal['text/plain', 'application/json']
+    synthetic_demo: bool
 
 
 class ReviewRequest(ContextMaterial):
@@ -416,6 +426,7 @@ class ToolProposal(Wire):
 
 
 class ModelOutputRequest(Wire):
+    usage: Usage | None = None
     session_id: ID
     model_call_id: ID
     context_version: ID
@@ -438,6 +449,7 @@ class BatchRequest(Wire):
 
 
 class CallResult(Wire):
+    risk_refs: list[EvidenceRef] = Field(default_factory=list)
     session_id: ID
     turn_id: ID
     call_id: ID
@@ -477,6 +489,7 @@ class FinalizeRequest(Wire):
 
 
 class FinalizedOutput(Wire):
+    risk_refs: list[EvidenceRef] = Field(default_factory=list)
     session_id: ID
     status: Literal['RELEASED', 'BLOCKED', 'REVIEW_PENDING']
     reason_code: str
