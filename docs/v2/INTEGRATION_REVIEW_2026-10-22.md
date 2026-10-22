@@ -77,7 +77,7 @@ powershell -NoProfile -File tools/v2/verify_guard.ps1 -Python .venv-integration/
 .venv-integration/Scripts/python.exe examples/v2/offline_guard.py
 ```
 
-详细 JUnit、构建日志与环境在本地 `logs/v2-integration/`，不把其中脚本结果算作真实模型评测。最终可提交的精简结果见同目录下的验收摘要文件（代码提交后生成）。
+详细 JUnit、构建日志与环境在本地 `logs/v2-integration/`，不把其中脚本结果算作真实模型评测。可提交的精简结果见 [验收摘要 JSON](VERIFICATION_2026-10-22.json)，记录实际受测合并提交 `45e5a6d`；其后提交仅补充文档、注释和验收记录。
 
 ## 5. 继续开发的交接顺序
 

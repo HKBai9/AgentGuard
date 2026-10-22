@@ -1,6 +1,6 @@
 """Consume A's models lazily. There is deliberately no fallback public schema.
 
-Tests inject a dictionary-only codec, explicitly without claiming contract parity.
+Tests use the same public validator with a dictionary return-value convenience.
 """
 
 from copy import deepcopy

@@ -1,0 +1,87 @@
+{
+  "date": "2026-10-22",
+  "tested_merge_commit": "45e5a6d5ad987699d492e30dc2248939fc3fda19",
+  "parents": [
+    "100b701b89c3cc2598e8d34f0b79243f9629fc78",
+    "09469175d6c728a5806bab4bba21b238dd42bfe7"
+  ],
+  "worktree_clean_at_verification_start": true,
+  "python": "3.12.12 (main, Oct 31 2025, 23:00:21) [MSC v.1944 64 bit (AMD64)]",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "success": true,
+  "paid_api_calls": 0,
+  "cloud_inference": "scripted responses; no live model effectiveness evaluation",
+  "suites": [
+    {
+      "suite": "legacy",
+      "tests": 141,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1,
+      "passed": 140
+    },
+    {
+      "suite": "contracts-runtime",
+      "tests": 81,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1,
+      "passed": 80
+    },
+    {
+      "suite": "guard-host",
+      "tests": 108,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 108
+    },
+    {
+      "suite": "integration",
+      "tests": 18,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1,
+      "passed": 17
+    }
+  ],
+  "totals": {
+    "tests": 348,
+    "passed": 345,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 3
+  },
+  "skipped_tests": [
+    {
+      "test": "test_actual_langchain_round_trip",
+      "reason": "could not import 'langchain_core.tools': No module named 'langchain_core'"
+    },
+    {
+      "test": "test_path_prefix_symlink_and_separator",
+      "reason": "symlink creation unavailable"
+    },
+    {
+      "test": "test_real_b_integration",
+      "reason": "Live cloud factory/credentials not configured; offline A/B integration has separate tests"
+    }
+  ],
+  "packaging": {
+    "wheel_build_passed": true,
+    "wheel_install_passed": true,
+    "source_checkout_import_rejected_by_verifier": true,
+    "schema": "0.1",
+    "runtime_smoke": "passed",
+    "guard_modules_imported": true,
+    "legacy_yaml_loaded": true,
+    "dependency_environment": "locked dependencies already installed; clean package target directory"
+  },
+  "not_completed": [
+    "B04 relation-based context selection and ablation",
+    "B05 native/framework host and actual host recovery",
+    "B06 six-view console",
+    "B07 live evaluation, baselines, ablations and cost report",
+    "B08 complete one-command competition demos"
+  ],
+  "reproduce": "powershell -NoProfile -File tools/v2/verify_runtime.ps1 -Python .venv-integration/Scripts/python.exe"
+}

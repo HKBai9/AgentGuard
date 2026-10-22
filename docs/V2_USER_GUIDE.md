@@ -116,7 +116,7 @@ Budget 同时限制尝试次数和可选 token 预算；并发请求先保守预
 
 | 结果 | 含义及下一步 |
 |---|---|
-| ContractUnavailable | 等 A01 提供公共模型并按交接表统一字段；不可开启透传回退 |
+| ContractUnavailable | 安装或导入不完整；检查是否使用合并后的包和正确 Python 环境，不可开启透传回退 |
 | MODEL_CONFIGURATION_ERROR | 云端未显式启用、无密钥/模型、配置越界；无默认假答案 |
 | MODEL_DESTINATION_DENIED | A 未授权本次材料给配置的模型目的地 |
 | MODEL_TIMEOUT / MODEL_UNAVAILABLE | 检查供应商及网络；保持内容隔离，查看脱敏尝试记录 |
@@ -126,5 +126,4 @@ Budget 同时限制尝试次数和可选 token 预算；并发请求先保守预
 | MISSING_EVIDENCE | 材料不全、补证据仍不足或重复补充；由 A 保持阻断/隔离 |
 | BUDGET_EXHAUSTED | 次数/token 上限或未知 token 用量；不能绕过审查继续释放 |
 
-本轮未改变旧版入口、公共类型、SQLite、执行器、工具登记、依赖元数据及 UI。
-A01/B01 联调、真实模型正常/注入两份资料验证和安装包验证仍待完成。
+2026-10-22 已完成公共契约、离线 A/B 联调和开发版安装验证；真实模型效果、实际宿主、UI 与比赛评测仍待完成。请以集成验收报告的逐项状态为准。
