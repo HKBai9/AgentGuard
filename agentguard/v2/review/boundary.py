@@ -75,7 +75,9 @@ class PublicContracts:
         if model is None:
             raise ContractUnavailable("A01 missing public model: " + name)
         try:
-            return model.model_validate(payload(value))
+            # This is a JSON boundary: strict Python validation rejects valid
+            # JSON arrays for tuple spans and strings for UTC timestamps.
+            return model.model_validate_json(dumps(payload(value)))
         except (ValueError, TypeError):
             raise GuardError("INVALID_SCHEMA") from None
 
@@ -85,3 +87,13 @@ def versioned(value):
     if result.get("schema_version") != "0.1":
         raise GuardError("INVALID_SCHEMA")
     return result
+
+
+def wire_usage(value):
+    """Client metadata uses the public nullable usage shape, never model text."""
+    usage = payload(value)
+    usage['schema_version'] = '0.1'
+    for name in ('input_tokens', 'output_tokens'):
+        if usage.get(name) == 'unavailable':
+            usage[name] = None
+    return usage

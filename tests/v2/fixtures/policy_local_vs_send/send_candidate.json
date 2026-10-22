@@ -4,6 +4,7 @@
   "base_policy_version": null,
   "rules": [
     {
+      "schema_version": "0.1",
       "tool_id": "read_document",
       "effect": "READ",
       "resource_scope_ids": [
@@ -16,6 +17,7 @@
       "max_calls": 2
     },
     {
+      "schema_version": "0.1",
       "tool_id": "write_report",
       "effect": "WRITE",
       "resource_scope_ids": [
@@ -28,6 +30,7 @@
       "max_calls": 1
     },
     {
+      "schema_version": "0.1",
       "tool_id": "send_report",
       "effect": "SEND",
       "resource_scope_ids": [
@@ -43,15 +46,16 @@
     }
   ],
   "model_destination_ids": [
-    "guard_cloud"
-  ],
-  "rationale": "用户明确授权向指定本地测试接收器发送报告。",
-  "evidence_refs": [
     {
-      "artifact_id": "task-synthetic",
-      "version": 1,
-      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      "schema_version": "0.1",
+      "destination_id": "guard_cloud",
+      "resource_scope_ids": [
+        "docs",
+        "reports"
+      ]
     }
   ],
+  "rationale": "用户明确授权向指定本地测试接收器发送报告。",
+  "evidence_refs": [],
   "unresolved_requirements": []
 }

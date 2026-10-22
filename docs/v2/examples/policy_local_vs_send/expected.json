@@ -1,0 +1,10 @@
+{
+  "local_allowed_effects": [
+    "READ",
+    "WRITE"
+  ],
+  "local_send": false,
+  "send_only_destinations": [
+    "receiver"
+  ]
+}

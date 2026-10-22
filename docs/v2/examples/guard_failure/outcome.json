@@ -1,0 +1,48 @@
+{
+  "schema_version": "0.1",
+  "status": "DECIDED",
+  "decision": {
+    "schema_version": "0.1",
+    "review_id": "review_2d17dfc6101a453fb521b9a32f3360d1",
+    "session_id": "session_d0ff34379939447195b0eaac8c37eeed",
+    "turn_id": "turn_e50e93a7f7aa4df0bd08bf6065f7f39c",
+    "call_id": "call_c989ab55e9f644768370c195416f5c24",
+    "phase": "RESULT",
+    "policy_version": "policy_f0fff36615f94031938d27c41ca85725",
+    "context_version": "context_253fe78a098940b5bf82cd4648097f05",
+    "subject_ref": {
+      "schema_version": "0.1",
+      "artifact_id": "artifact_4b7427202d784ed39ca1ce65d6c251ed",
+      "version": 1,
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "json_pointer": null,
+      "span": null
+    },
+    "decision": "ALLOW",
+    "reason_code": "FIXTURE_DECISION",
+    "reason_summary": "test",
+    "evidence_refs": [
+      {
+        "schema_version": "0.1",
+        "artifact_id": "artifact_4b7427202d784ed39ca1ce65d6c251ed",
+        "version": 1,
+        "sha256": "acc4839a4dcb1aec492ba94f2384ae6e18eef5b694df62b957ba51c28ab29e8a",
+        "json_pointer": null,
+        "span": null
+      }
+    ],
+    "findings": [],
+    "redaction_targets": [],
+    "requested_evidence_refs": [],
+    "usage": {
+      "schema_version": "0.1",
+      "provider": "fixture",
+      "model": "offline",
+      "input_tokens": null,
+      "output_tokens": null,
+      "latency_ms": 0.0,
+      "attempts": 1
+    }
+  },
+  "failure": null
+}

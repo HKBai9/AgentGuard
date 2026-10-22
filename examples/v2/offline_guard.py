@@ -20,7 +20,7 @@ async def main():
     fakes = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(fakes)
     codec = fakes.FixtureContracts()
-    results = {"mode": "synthetic_offline_playback", "public_contract_validated": False,
+    results = {"mode": "synthetic_offline_playback", "public_contract_validated": True,
                "runtime_integrated": False, "policy": {}, "reviews": {}}
     for task in ("local", "send"):
         client = fakes.FakeCloudClient([fakes.fixture("policy_local_vs_send", task + "_candidate.json")])

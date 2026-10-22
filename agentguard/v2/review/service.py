@@ -6,7 +6,7 @@ The service cannot fetch evidence. Only A may supply an authorized second packag
 from .boundary import PublicContracts, payload
 from .errors import ContractUnavailable, GuardError
 from .evidence import evidence_index, identity
-from .prompts import BINDINGS
+from .prompts import bindings
 
 
 class GuardService:
@@ -25,7 +25,7 @@ class GuardService:
             if built["status"] != "READY":
                 raise GuardError(built["reason_code"])
             decision = payload(await self.reviewer.review(built["request"]))
-            if second and decision["decision"] == "NEEDS_CONTEXT":
+            if (second or payload(material)['supplemental_attempt'] == 1) and decision["decision"] == "NEEDS_CONTEXT":
                 raise GuardError("MISSING_EVIDENCE")
             return self.contracts.parse("ReviewOutcome", {
                 "schema_version": "0.1", "status": "DECIDED", "decision": decision, "failure": None,
@@ -46,12 +46,12 @@ class GuardService:
             decision = prior["decision"]
             if prior["status"] != "DECIDED" or decision["decision"] != "NEEDS_CONTEXT":
                 raise GuardError("MISSING_EVIDENCE")
-            for key in (*BINDINGS, "trusted_task", "task_policy", "host_constraints", "current_object",
-                        "mandatory_facts", "allowed_transform_ids", "model_destination_id",
-                        "authorized_model_destination_ids", "supplemental_history", "available_evidence_refs"):
+            for key in (*bindings(original).keys() - {'policy_version'}, "trusted_task", "policy", "host_policy", "subject",
+                        "mandatory_facts", "allowed_transform_ids", "lineage", "relevant_security_revision",
+                        "recent_events", "available_evidence_refs", "task_ref"):
                 if supplied[key] != original[key]:
                     raise GuardError("INVALID_REFERENCE")
-            if any(decision[k] != original[k] for k in BINDINGS):
+            if any(decision[k] != value for k, value in bindings(original).items()):
                 raise GuardError("INVALID_REFERENCE")
             requested = decision["requested_evidence_refs"]
             if not requested or any(ref not in original["available_evidence_refs"] for ref in requested):
@@ -62,7 +62,7 @@ class GuardService:
             needed = {identity(ref) for ref in requested}
             if not needed <= new.keys() or new.keys() - old.keys() - needed:
                 raise GuardError("INVALID_REFERENCE")
-            key = tuple(original[k] for k in ("session_id", "review_id", "policy_version", "context_version"))
+            key = tuple(bindings(original)[k] for k in ("session_id", "review_id", "policy_version", "context_version"))
             if key in self._refilled:
                 raise GuardError("MISSING_EVIDENCE")
             # No eviction that might permit an old review's third pass. A must
@@ -77,7 +77,7 @@ class GuardService:
         return await self._inspect(supplied, second=True)
 
     def _failure(self, code):
-        failure = self.contracts.parse("ReviewFailure", {"schema_version": "0.1", "reason_code": code})
+        failure = self.contracts.parse("ReviewFailure", {"schema_version": "0.1", "reason_code": code, "usage": None})
         return self.contracts.parse("ReviewOutcome", {
             "schema_version": "0.1", "status": "FAILED", "decision": None, "failure": payload(failure),
         })

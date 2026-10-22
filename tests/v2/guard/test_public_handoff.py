@@ -1,24 +1,18 @@
-"""This is deliberately skipped until A01 supplies the one shared model module."""
-
-from importlib.util import find_spec
-
-import pytest
+"""Both teams' fixtures must parse with the shared production models."""
 
 from agentguard.v2.review.boundary import PublicContracts
 from agentguard.v2.review.context import ContextBuilder
 from .fakes import fixture
 
 
-def test_public_models_parse_the_same_fixtures_when_a01_is_available():
-    if find_spec("agentguard.v2.contracts") is None:
-        pytest.skip("A01 pending: no shared contracts/ports; dictionary tests are not contract parity")
+def test_public_models_parse_the_same_fixtures():
     contracts = PublicContracts()
     for group in ("normal_allow", "injection_block", "field_redact"):
         material = contracts.parse("ContextMaterial", fixture(group))
         ContextBuilder(contracts=contracts).build(material)
         decision = fixture(group, "model_response.json")
-        decision["usage"] = {"provider": "fake", "model": "scripted-offline",
-                             "input_tokens": "unavailable", "output_tokens": "unavailable",
+        decision["usage"] = {"schema_version": "0.1", "provider": "fake", "model": "scripted-offline",
+                             "input_tokens": None, "output_tokens": None,
                              "latency_ms": 0.0, "attempts": 1}
         contracts.parse("ReviewDecision", decision)
     for task in ("local", "send"):

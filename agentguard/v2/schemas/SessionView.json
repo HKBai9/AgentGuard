@@ -1,0 +1,63 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "0.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "session_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "ACTIVE",
+        "RECOVERING",
+        "CLOSED"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "policy_version": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Policy Version",
+      "type": "string"
+    },
+    "context_version": {
+      "anyOf": [
+        {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Context Version"
+    },
+    "relevant_security_revision": {
+      "minimum": 0,
+      "title": "Relevant Security Revision",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "session_id",
+    "status",
+    "policy_version",
+    "context_version",
+    "relevant_security_revision"
+  ],
+  "title": "SessionView",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

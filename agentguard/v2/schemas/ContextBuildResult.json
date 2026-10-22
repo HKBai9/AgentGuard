@@ -1,0 +1,827 @@
+{
+  "$defs": {
+    "DataLabels": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "confidentiality": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Confidentiality",
+          "type": "array"
+        },
+        "allowed_uses": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Allowed Uses"
+        },
+        "destination_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_.:-]+$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Destination Ids"
+        },
+        "model_destination_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_.:-]+$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Destination Ids"
+        },
+        "integrity": {
+          "items": {
+            "enum": [
+              "trusted_user",
+              "host",
+              "external",
+              "model"
+            ],
+            "type": "string"
+          },
+          "title": "Integrity",
+          "type": "array"
+        },
+        "field_restrictions": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Restrictions"
+          },
+          "title": "Field Restrictions",
+          "type": "object"
+        }
+      },
+      "required": [
+        "schema_version",
+        "confidentiality",
+        "allowed_uses",
+        "destination_ids",
+        "model_destination_ids",
+        "integrity",
+        "field_restrictions"
+      ],
+      "title": "DataLabels",
+      "type": "object"
+    },
+    "EvidenceBlock": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "ref": {
+          "$ref": "#/$defs/EvidenceRef"
+        },
+        "content": {
+          "title": "Content"
+        },
+        "labels": {
+          "$ref": "#/$defs/DataLabels"
+        },
+        "role": {
+          "enum": [
+            "task",
+            "subject",
+            "related",
+            "input"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "ref",
+        "content",
+        "labels",
+        "role"
+      ],
+      "title": "EvidenceBlock",
+      "type": "object"
+    },
+    "EvidenceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "artifact_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "json_pointer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Json Pointer"
+        },
+        "span": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Span"
+        }
+      },
+      "required": [
+        "schema_version",
+        "artifact_id",
+        "version",
+        "sha256",
+        "json_pointer",
+        "span"
+      ],
+      "title": "EvidenceRef",
+      "type": "object"
+    },
+    "HostPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "rules": {
+          "items": {
+            "$ref": "#/$defs/PolicyRule"
+          },
+          "title": "Rules",
+          "type": "array"
+        },
+        "model_destination_ids": {
+          "items": {
+            "$ref": "#/$defs/ModelDestinationGrant"
+          },
+          "title": "Model Destination Ids",
+          "type": "array"
+        },
+        "guard_destination_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Guard Destination Id",
+          "type": "string"
+        },
+        "final_destination_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Final Destination Id",
+          "type": "string"
+        },
+        "final_use": {
+          "title": "Final Use",
+          "type": "string"
+        },
+        "max_review_bytes": {
+          "exclusiveMinimum": 0,
+          "title": "Max Review Bytes",
+          "type": "integer"
+        },
+        "permit_ttl_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Permit Ttl Seconds",
+          "type": "integer"
+        },
+        "review_timeout_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 300,
+          "title": "Review Timeout Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "schema_version",
+        "rules",
+        "model_destination_ids",
+        "guard_destination_id",
+        "final_destination_id",
+        "final_use",
+        "max_review_bytes",
+        "permit_ttl_seconds",
+        "review_timeout_seconds"
+      ],
+      "title": "HostPolicy",
+      "type": "object"
+    },
+    "LineageEdge": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "session_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Session Id",
+          "type": "string"
+        },
+        "source_ref": {
+          "$ref": "#/$defs/EvidenceRef"
+        },
+        "target_ref": {
+          "$ref": "#/$defs/EvidenceRef"
+        },
+        "kind": {
+          "enum": [
+            "exact",
+            "possible"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "event_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Event Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "session_id",
+        "source_ref",
+        "target_ref",
+        "kind",
+        "event_id"
+      ],
+      "title": "LineageEdge",
+      "type": "object"
+    },
+    "ModelDestinationGrant": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "destination_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Destination Id",
+          "type": "string"
+        },
+        "resource_scope_ids": {
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "type": "string"
+          },
+          "title": "Resource Scope Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "destination_id",
+        "resource_scope_ids"
+      ],
+      "title": "ModelDestinationGrant",
+      "type": "object"
+    },
+    "PolicyRule": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "tool_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Tool Id",
+          "type": "string"
+        },
+        "effect": {
+          "enum": [
+            "READ",
+            "WRITE",
+            "SEND",
+            "DELETE"
+          ],
+          "title": "Effect",
+          "type": "string"
+        },
+        "resource_scope_ids": {
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "type": "string"
+          },
+          "title": "Resource Scope Ids",
+          "type": "array"
+        },
+        "destination_ids": {
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "type": "string"
+          },
+          "title": "Destination Ids",
+          "type": "array"
+        },
+        "allowed_uses": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Allowed Uses",
+          "type": "array"
+        },
+        "max_calls": {
+          "minimum": 0,
+          "title": "Max Calls",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "tool_id",
+        "effect",
+        "resource_scope_ids",
+        "destination_ids",
+        "allowed_uses",
+        "max_calls"
+      ],
+      "title": "PolicyRule",
+      "type": "object"
+    },
+    "Restrictions": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "confidentiality": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Confidentiality",
+          "type": "array"
+        },
+        "allowed_uses": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Allowed Uses"
+        },
+        "destination_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_.:-]+$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Destination Ids"
+        },
+        "model_destination_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_.:-]+$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Destination Ids"
+        }
+      },
+      "required": [
+        "schema_version",
+        "confidentiality",
+        "allowed_uses",
+        "destination_ids",
+        "model_destination_ids"
+      ],
+      "title": "Restrictions",
+      "type": "object"
+    },
+    "ReviewRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "session_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Session Id",
+          "type": "string"
+        },
+        "turn_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "call_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_.:-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Call Id"
+        },
+        "review_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Review Id",
+          "type": "string"
+        },
+        "phase": {
+          "enum": [
+            "ACTION",
+            "RESULT",
+            "FINAL"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "trusted_task": {
+          "title": "Trusted Task",
+          "type": "string"
+        },
+        "task_ref": {
+          "$ref": "#/$defs/EvidenceRef"
+        },
+        "policy": {
+          "$ref": "#/$defs/TaskPolicy"
+        },
+        "host_policy": {
+          "$ref": "#/$defs/HostPolicy"
+        },
+        "context_version": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Context Version",
+          "type": "string"
+        },
+        "relevant_security_revision": {
+          "title": "Relevant Security Revision",
+          "type": "integer"
+        },
+        "subject_ref": {
+          "$ref": "#/$defs/EvidenceRef"
+        },
+        "subject": {
+          "title": "Subject"
+        },
+        "mandatory_facts": {
+          "additionalProperties": true,
+          "title": "Mandatory Facts",
+          "type": "object"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceBlock"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "lineage": {
+          "items": {
+            "$ref": "#/$defs/LineageEdge"
+          },
+          "title": "Lineage",
+          "type": "array"
+        },
+        "recent_events": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Recent Events",
+          "type": "array"
+        },
+        "supplemental_attempt": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Supplemental Attempt",
+          "type": "integer"
+        },
+        "allowed_transform_ids": {
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "type": "string"
+          },
+          "title": "Allowed Transform Ids",
+          "type": "array"
+        },
+        "available_evidence_refs": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "title": "Available Evidence Refs",
+          "type": "array"
+        },
+        "selected_evidence_refs": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "title": "Selected Evidence Refs",
+          "type": "array"
+        },
+        "retained_mandatory_facts": {
+          "additionalProperties": true,
+          "title": "Retained Mandatory Facts",
+          "type": "object"
+        },
+        "budget_used": {
+          "minimum": 0,
+          "title": "Budget Used",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "session_id",
+        "turn_id",
+        "call_id",
+        "review_id",
+        "phase",
+        "trusted_task",
+        "task_ref",
+        "policy",
+        "host_policy",
+        "context_version",
+        "relevant_security_revision",
+        "subject_ref",
+        "subject",
+        "mandatory_facts",
+        "evidence",
+        "lineage",
+        "recent_events",
+        "supplemental_attempt",
+        "allowed_transform_ids",
+        "available_evidence_refs",
+        "selected_evidence_refs",
+        "retained_mandatory_facts",
+        "budget_used"
+      ],
+      "title": "ReviewRequest",
+      "type": "object"
+    },
+    "TaskPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "session_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Session Id",
+          "type": "string"
+        },
+        "base_policy_version": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_.:-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Base Policy Version"
+        },
+        "rules": {
+          "items": {
+            "$ref": "#/$defs/PolicyRule"
+          },
+          "title": "Rules",
+          "type": "array"
+        },
+        "model_destination_ids": {
+          "items": {
+            "$ref": "#/$defs/ModelDestinationGrant"
+          },
+          "title": "Model Destination Ids",
+          "type": "array"
+        },
+        "rationale": {
+          "title": "Rationale",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "unresolved_requirements": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Unresolved Requirements",
+          "type": "array"
+        },
+        "policy_version": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "change_kind": {
+          "enum": [
+            "INITIAL",
+            "UNCHANGED",
+            "TIGHTENING",
+            "EXPANSION",
+            "UNKNOWN"
+          ],
+          "title": "Change Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "session_id",
+        "base_policy_version",
+        "rules",
+        "model_destination_ids",
+        "rationale",
+        "evidence_refs",
+        "unresolved_requirements",
+        "policy_version",
+        "change_kind"
+      ],
+      "title": "TaskPolicy",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "0.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "READY",
+        "INCOMPLETE"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "request": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReviewRequest"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "missing_evidence": {
+      "items": {
+        "$ref": "#/$defs/EvidenceRef"
+      },
+      "title": "Missing Evidence",
+      "type": "array"
+    },
+    "reason_code": {
+      "title": "Reason Code",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "status",
+    "request",
+    "missing_evidence",
+    "reason_code"
+  ],
+  "title": "ContextBuildResult",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

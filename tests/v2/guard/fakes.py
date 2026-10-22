@@ -8,6 +8,7 @@ from pathlib import Path
 
 from agentguard.v2.review.clients import CloudReply
 from agentguard.v2.review.errors import GuardError
+from agentguard.v2.review.boundary import PublicContracts, payload
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 
@@ -16,15 +17,11 @@ def fixture(group, filename="material.json"):
     return json.loads((FIXTURES / group / filename).read_text(encoding="utf-8"))
 
 
-class FixtureContracts:
-    """Explicit test-only identity codec; NOT Pydantic or a public schema clone.
-
-    Tests verify B's behavior on provisional dictionaries. Never use in bootstrap.
-    A01 must replace this injection with PublicContracts for joint acceptance.
-    """
+class FixtureContracts(PublicContracts):
+    """Dictionary convenience around the actual shared production validator."""
 
     def parse(self, name, value):
-        return deepcopy(value)
+        return payload(super().parse(name, value))
 
 
 class FakeCloudClient:

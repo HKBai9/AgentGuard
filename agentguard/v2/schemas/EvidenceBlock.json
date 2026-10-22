@@ -1,0 +1,280 @@
+{
+  "$defs": {
+    "DataLabels": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "confidentiality": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Confidentiality",
+          "type": "array"
+        },
+        "allowed_uses": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Allowed Uses"
+        },
+        "destination_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_.:-]+$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Destination Ids"
+        },
+        "model_destination_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_.:-]+$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Destination Ids"
+        },
+        "integrity": {
+          "items": {
+            "enum": [
+              "trusted_user",
+              "host",
+              "external",
+              "model"
+            ],
+            "type": "string"
+          },
+          "title": "Integrity",
+          "type": "array"
+        },
+        "field_restrictions": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Restrictions"
+          },
+          "title": "Field Restrictions",
+          "type": "object"
+        }
+      },
+      "required": [
+        "schema_version",
+        "confidentiality",
+        "allowed_uses",
+        "destination_ids",
+        "model_destination_ids",
+        "integrity",
+        "field_restrictions"
+      ],
+      "title": "DataLabels",
+      "type": "object"
+    },
+    "EvidenceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "artifact_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "json_pointer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Json Pointer"
+        },
+        "span": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Span"
+        }
+      },
+      "required": [
+        "schema_version",
+        "artifact_id",
+        "version",
+        "sha256",
+        "json_pointer",
+        "span"
+      ],
+      "title": "EvidenceRef",
+      "type": "object"
+    },
+    "Restrictions": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "confidentiality": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Confidentiality",
+          "type": "array"
+        },
+        "allowed_uses": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Allowed Uses"
+        },
+        "destination_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_.:-]+$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Destination Ids"
+        },
+        "model_destination_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_.:-]+$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Destination Ids"
+        }
+      },
+      "required": [
+        "schema_version",
+        "confidentiality",
+        "allowed_uses",
+        "destination_ids",
+        "model_destination_ids"
+      ],
+      "title": "Restrictions",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "0.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "ref": {
+      "$ref": "#/$defs/EvidenceRef"
+    },
+    "content": {
+      "title": "Content"
+    },
+    "labels": {
+      "$ref": "#/$defs/DataLabels"
+    },
+    "role": {
+      "enum": [
+        "task",
+        "subject",
+        "related",
+        "input"
+      ],
+      "title": "Role",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "ref",
+    "content",
+    "labels",
+    "role"
+  ],
+  "title": "EvidenceBlock",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

@@ -1,0 +1,621 @@
+{
+  "$defs": {
+    "DataLabels": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "confidentiality": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Confidentiality",
+          "type": "array"
+        },
+        "allowed_uses": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Allowed Uses"
+        },
+        "destination_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_.:-]+$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Destination Ids"
+        },
+        "model_destination_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_.:-]+$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Destination Ids"
+        },
+        "integrity": {
+          "items": {
+            "enum": [
+              "trusted_user",
+              "host",
+              "external",
+              "model"
+            ],
+            "type": "string"
+          },
+          "title": "Integrity",
+          "type": "array"
+        },
+        "field_restrictions": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Restrictions"
+          },
+          "title": "Field Restrictions",
+          "type": "object"
+        }
+      },
+      "required": [
+        "schema_version",
+        "confidentiality",
+        "allowed_uses",
+        "destination_ids",
+        "model_destination_ids",
+        "integrity",
+        "field_restrictions"
+      ],
+      "title": "DataLabels",
+      "type": "object"
+    },
+    "Destination": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "destination_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Destination Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "network",
+            "model",
+            "user",
+            "local"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "address": {
+          "title": "Address",
+          "type": "string"
+        },
+        "allowed_confidentiality": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Confidentiality",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "destination_id",
+        "kind",
+        "address",
+        "allowed_confidentiality"
+      ],
+      "title": "Destination",
+      "type": "object"
+    },
+    "HostPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "rules": {
+          "items": {
+            "$ref": "#/$defs/PolicyRule"
+          },
+          "title": "Rules",
+          "type": "array"
+        },
+        "model_destination_ids": {
+          "items": {
+            "$ref": "#/$defs/ModelDestinationGrant"
+          },
+          "title": "Model Destination Ids",
+          "type": "array"
+        },
+        "guard_destination_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Guard Destination Id",
+          "type": "string"
+        },
+        "final_destination_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Final Destination Id",
+          "type": "string"
+        },
+        "final_use": {
+          "title": "Final Use",
+          "type": "string"
+        },
+        "max_review_bytes": {
+          "exclusiveMinimum": 0,
+          "title": "Max Review Bytes",
+          "type": "integer"
+        },
+        "permit_ttl_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Permit Ttl Seconds",
+          "type": "integer"
+        },
+        "review_timeout_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 300,
+          "title": "Review Timeout Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "schema_version",
+        "rules",
+        "model_destination_ids",
+        "guard_destination_id",
+        "final_destination_id",
+        "final_use",
+        "max_review_bytes",
+        "permit_ttl_seconds",
+        "review_timeout_seconds"
+      ],
+      "title": "HostPolicy",
+      "type": "object"
+    },
+    "ModelDestinationGrant": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "destination_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Destination Id",
+          "type": "string"
+        },
+        "resource_scope_ids": {
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "type": "string"
+          },
+          "title": "Resource Scope Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "destination_id",
+        "resource_scope_ids"
+      ],
+      "title": "ModelDestinationGrant",
+      "type": "object"
+    },
+    "PolicyRule": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "tool_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Tool Id",
+          "type": "string"
+        },
+        "effect": {
+          "enum": [
+            "READ",
+            "WRITE",
+            "SEND",
+            "DELETE"
+          ],
+          "title": "Effect",
+          "type": "string"
+        },
+        "resource_scope_ids": {
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "type": "string"
+          },
+          "title": "Resource Scope Ids",
+          "type": "array"
+        },
+        "destination_ids": {
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "type": "string"
+          },
+          "title": "Destination Ids",
+          "type": "array"
+        },
+        "allowed_uses": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Allowed Uses",
+          "type": "array"
+        },
+        "max_calls": {
+          "minimum": 0,
+          "title": "Max Calls",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "tool_id",
+        "effect",
+        "resource_scope_ids",
+        "destination_ids",
+        "allowed_uses",
+        "max_calls"
+      ],
+      "title": "PolicyRule",
+      "type": "object"
+    },
+    "ResourceCatalog": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "resources": {
+          "items": {
+            "$ref": "#/$defs/ResourceScope"
+          },
+          "title": "Resources",
+          "type": "array"
+        },
+        "destinations": {
+          "items": {
+            "$ref": "#/$defs/Destination"
+          },
+          "title": "Destinations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "resources",
+        "destinations"
+      ],
+      "title": "ResourceCatalog",
+      "type": "object"
+    },
+    "ResourceScope": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "scope_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Scope Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "path",
+            "logical"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "root": {
+          "title": "Root",
+          "type": "string"
+        },
+        "labels": {
+          "$ref": "#/$defs/DataLabels"
+        }
+      },
+      "required": [
+        "schema_version",
+        "scope_id",
+        "kind",
+        "root",
+        "labels"
+      ],
+      "title": "ResourceScope",
+      "type": "object"
+    },
+    "Restrictions": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "confidentiality": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Confidentiality",
+          "type": "array"
+        },
+        "allowed_uses": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Allowed Uses"
+        },
+        "destination_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_.:-]+$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Destination Ids"
+        },
+        "model_destination_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_.:-]+$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Destination Ids"
+        }
+      },
+      "required": [
+        "schema_version",
+        "confidentiality",
+        "allowed_uses",
+        "destination_ids",
+        "model_destination_ids"
+      ],
+      "title": "Restrictions",
+      "type": "object"
+    },
+    "ToolManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "tool_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Tool Id",
+          "type": "string"
+        },
+        "manifest_version": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Manifest Version",
+          "type": "string"
+        },
+        "parameters_schema": {
+          "additionalProperties": true,
+          "title": "Parameters Schema",
+          "type": "object"
+        },
+        "effects": {
+          "items": {
+            "enum": [
+              "READ",
+              "WRITE",
+              "SEND",
+              "DELETE"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Effects",
+          "type": "array"
+        },
+        "resource_parameter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Resource Parameter"
+        },
+        "destination_parameter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Destination Parameter"
+        },
+        "artifact_parameters": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Artifact Parameters",
+          "type": "object"
+        },
+        "return_media_type": {
+          "enum": [
+            "text/plain",
+            "application/json"
+          ],
+          "title": "Return Media Type",
+          "type": "string"
+        },
+        "supports_idempotency_key": {
+          "title": "Supports Idempotency Key",
+          "type": "boolean"
+        },
+        "output_labels": {
+          "$ref": "#/$defs/DataLabels"
+        },
+        "synthetic_demo": {
+          "default": false,
+          "title": "Synthetic Demo",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "schema_version",
+        "tool_id",
+        "manifest_version",
+        "parameters_schema",
+        "effects",
+        "resource_parameter",
+        "destination_parameter",
+        "artifact_parameters",
+        "return_media_type",
+        "supports_idempotency_key",
+        "output_labels"
+      ],
+      "title": "ToolManifest",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "0.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "trusted_task": {
+      "minLength": 1,
+      "title": "Trusted Task",
+      "type": "string"
+    },
+    "host_policy": {
+      "$ref": "#/$defs/HostPolicy"
+    },
+    "resource_catalog": {
+      "$ref": "#/$defs/ResourceCatalog"
+    },
+    "tool_manifests": {
+      "items": {
+        "$ref": "#/$defs/ToolManifest"
+      },
+      "title": "Tool Manifests",
+      "type": "array"
+    },
+    "confirmed_authorizations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Confirmed Authorizations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "trusted_task",
+    "host_policy",
+    "resource_catalog",
+    "tool_manifests",
+    "confirmed_authorizations"
+  ],
+  "title": "SessionRequest",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

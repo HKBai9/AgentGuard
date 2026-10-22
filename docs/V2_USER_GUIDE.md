@@ -1,27 +1,26 @@
 # v2 Guard 开发验证指南（B01—B03）
 
-日期：2026-10-21。当前交付是 B 的离线实现和显式启用的云端传输适配。
-A 的公共类型、实际 Runtime/隔离释放链路未提供，因此还不是可安装的完整 v2 产品。
-没有运行真实模型效果实验，没有拦截率或费用结论。
+更新：2026-10-22。当前交付已统一 A/B 公共类型，真实 Runtime 与 Guard 首阶段组件可进行离线联调；云端响应仍以脚本替代。可安装的是 v2 开发版，不是已完成全部比赛功能的成品。没有运行真实模型效果实验，没有拦截率或费用结论；逐项状态见 [集成验收报告](v2/INTEGRATION_REVIEW_2026-10-22.md)。
 
 ## 默认离线运行
 
-使用 Python 3.12。当前机器已建立本地 `.venv`，仅安装项目已有的 pytest、PyYAML 开发依赖；
-未更改项目元数据或锁文件。新环境可执行：
+使用 Python 3.12。新环境按合并后的锁定依赖安装，不能只安装 pytest/PyYAML：
 
 ```powershell
-uv venv --python 3.12 .venv
-uv pip install --python .venv/Scripts/python.exe pytest==9.1.1 PyYAML==6.0.3
-powershell -NoProfile -File tools/v2/verify_guard.ps1
-.venv/Scripts/python.exe examples/v2/offline_guard.py
+uv venv --python 3.12 .venv-v2 --seed
+uv pip install --python .venv-v2/Scripts/python.exe -r requirements-v2.lock.txt
+uv pip install --python .venv-v2/Scripts/python.exe --no-deps -e .
+powershell -NoProfile -File tools/v2/verify_guard.ps1 -Python .venv-v2/Scripts/python.exe
+powershell -NoProfile -File tools/v2/verify_runtime.ps1 -Python .venv-v2/Scripts/python.exe
+.venv-v2/Scripts/python.exe examples/v2/offline_guard.py
 ```
 
 已有 Python 3.12 环境也可用 `verify_guard.ps1 -Python <可执行文件路径>`。
 脚本默认只运行 `tests/v2/guard`、`tests/v2/host`，不读取密钥、不发云端请求。
 测试禁用外部网络；Windows asyncio 所需的回环 socketpair 例外。
-唯一待 A01 的公共契约测试会显示 skip；不能把它算作通过。
+公共契约测试现在必须运行；真实 A/B 组件联调在 `tests/v2/integration/test_guard_runtime.py`，不是跳过项。真实云端 factory 未配置时，独立的 live 测试才会跳过。
 
-离线样例输出持续标识 `synthetic_offline_playback`、`public_contract_validated: false`、
+离线样例输出持续标识 `synthetic_offline_playback`、`public_contract_validated: true`、
 `runtime_integrated: false`，预期如下：
 
 | 样例 | 预期 |
@@ -40,10 +39,9 @@ FakeCloudClient 只返回人工编写的答案；它不证明模型能识别攻�
 
 正式组件默认使用 `PublicContracts`，只导入 A 的 `agentguard.v2.contracts`。
 缺失时抛出 `ContractUnavailable`，不会回退到字典透传或 FakeCloudClient。
-测试中的 `FixtureContracts` 不实现 Schema，仅允许 B 在 A01 缺失期间验证自己的行为。
-具体字段请求、待确认枚举和迁移步骤在 [B 任务书交接记录](tasks/V2_B_GUARD.md#7-本轮交付与给-a-的明确交接2026-10-21)。
+测试中的 `FixtureContracts` 现在调用相同公共校验器，只把返回值转成字典以便断言，不再透传。精确字段见 [共享契约](tasks/V2_SHARED_CONTRACT.md) 和 `agentguard/v2/contracts.py`；B 任务书第 7 节保留合并前的历史提案。
 
-A 实现并对齐公共模型后，组合方式为：
+实际组件的组合方式为：
 
 ```python
 from agentguard.v2.review.clients import CloudClient, CloudConfig
@@ -72,9 +70,7 @@ ContextBuilder 是纯函数，保留完整本次对象、可信任务和所有�
 ACTION 不能 REDACT；RESULT/FINAL 只提出变换目标，B 不产出可交付的改写全文。
 
 NEEDS_CONTEXT 只接受 A 预先列出的既有证据引用，不读取文件、URL 或调用工具。
-A 可调用 `inspect_with_evidence(original, previous_outcome, supplied)` 补充一次，任务、对象、
-权限与安全事实不能改变，只能增加本次请求的证据。再次要求补证据保持失败。
-服务实例内拒绝重复补证据；A 必须在持久状态中保证进程重启/新实例后仍不超限。
+Runtime 已负责补证据循环，最多一次，使用 `supplemental_attempt` 标记并记录审查尝试。B 的独立 `inspect_with_evidence` 也保留一次补充限制；两条路径都不能改变任务、对象、权限和已有证据。再次要求补证据保持失败。
 
 可选 `request_sink` 接收实际构造并发送的消息副本、关联信息、模型和提示版本，便于 A 在
 受控审计存储中记录和脱敏展示。默认不记录正文；**不要把这个 sink 接普通日志或开放 UI**。
@@ -94,17 +90,16 @@ A 可调用 `inspect_with_evidence(original, previous_outcome, supplied)` 补充
 
 ```powershell
 $env:AGENTGUARD_V2_CLOUD_ENABLED = "1"
-$env:AGENTGUARD_V2_MODEL = "deepseek-flash"
+$env:AGENTGUARD_V2_MODEL = "<填写账户可用模型名>"
 $env:AGENTGUARD_V2_DESTINATION_ID = "guard_cloud"
 # 通过本地安全方式设置 AGENTGUARD_V2_API_KEY，不要粘贴到版本库/测试记录。
-powershell -NoProfile -File tools/v2/verify_guard.ps1 -Live
+powershell -NoProfile -File tools/v2/verify_guard.ps1 -Python .venv-v2/Scripts/python.exe -Live
 ```
 
 `-Live` 在离线检查后仅运行 `examples/v2/cloud_smoke.py`，发送硬编码的自造连通性文本，
 不会读取真实文档或 fixtures；输出明确标为 `live_transport_smoke`。
 这不是 Guard 效果测试，也不证明与 A 的真实隔离链路已联通。
-真实 Guard 输入还必须由 A 授权给 `model_destination_id`，并在请求中明确列出
-`authorized_model_destination_ids`；端点配置不能由资料或模型改变。
+真实 Guard 输入还必须由 A 对每份材料检查用途、标签和端点数据范围；配置客户端的 destination_id 必须匹配 host_policy.guard_destination_id，并具有对应模型授权。端点配置不能由资料或模型改变。
 
 调用默认最多 1 次重试，配置最大 3 次；仅重试超时、429、5xx 等暂时错误。
 认证错误、格式错误、拒绝、截断不重试；取消不转换成 ALLOW，也不偷偷继续新的调用。

@@ -10,14 +10,14 @@ Push-Location -LiteralPath $repoRoot
 try {
     & $Python -c "import sys; print(sys.version); sys.exit(0 if sys.version_info >= (3,12) else 2)"
     if ($LASTEXITCODE -ne 0) { throw "Python 3.12+ required; pass -Python with its executable path." }
-    & $Python -m pytest tests/v2/guard tests/v2/host -q
+    & $Python -m pytest tests/v2/guard tests/v2/host -o addopts= -p no:cacheprovider -q
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     if ($Live) {
         if ($env:AGENTGUARD_V2_CLOUD_ENABLED -ne "1") { throw "Live mode requires AGENTGUARD_V2_CLOUD_ENABLED=1." }
         & $Python examples/v2/cloud_smoke.py
         exit $LASTEXITCODE
     }
-    Write-Output "Offline checks passed. No cloud request was made; A01 contract/runtime integration is separate."
+    Write-Output "Offline Guard checks passed using shared public contracts. No cloud request was made; run verify_runtime.ps1 for A/B runtime integration."
 } finally {
     Pop-Location
 }

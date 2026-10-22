@@ -1,0 +1,46 @@
+{
+  "schema_version": "0.1",
+  "session_id": "session_08436411e4a7472192be18619f13e81a",
+  "turn_id": "turn_f4fb4e398ab24bbaafdbb4f8b314a971",
+  "results": {
+    "call_2459e98e99ab415a8f9758d9b3d31e1b": {
+      "schema_version": "0.1",
+      "session_id": "session_08436411e4a7472192be18619f13e81a",
+      "turn_id": "turn_f4fb4e398ab24bbaafdbb4f8b314a971",
+      "call_id": "call_2459e98e99ab415a8f9758d9b3d31e1b",
+      "status": "RELEASED",
+      "reason_code": "GUARD_DECISION",
+      "content": "document:docs",
+      "artifact_ref": {
+        "schema_version": "0.1",
+        "artifact_id": "artifact_fc223e0ea5644002aebd3275b3668840",
+        "version": 1,
+        "sha256": "acc4839a4dcb1aec492ba94f2384ae6e18eef5b694df62b957ba51c28ab29e8a",
+        "json_pointer": null,
+        "span": null
+      },
+      "receipt": {
+        "schema_version": "0.1",
+        "receipt_id": "receipt_3883e812088244fcafc7925812d71168",
+        "permit_id": "permit_c3e570ec374240e6bad4e02ea3619c67",
+        "session_id": "session_08436411e4a7472192be18619f13e81a",
+        "turn_id": "turn_f4fb4e398ab24bbaafdbb4f8b314a971",
+        "call_id": "call_2459e98e99ab415a8f9758d9b3d31e1b",
+        "status": "SUCCEEDED",
+        "reason_code": "TOOL_SUCCEEDED",
+        "effect_evidence": {
+          "dispatched": true
+        },
+        "artifact_ref": {
+          "schema_version": "0.1",
+          "artifact_id": "artifact_fc223e0ea5644002aebd3275b3668840",
+          "version": 1,
+          "sha256": "acc4839a4dcb1aec492ba94f2384ae6e18eef5b694df62b957ba51c28ab29e8a",
+          "json_pointer": null,
+          "span": null
+        },
+        "timestamp": "2026-10-21T12:32:20.127879Z"
+      }
+    }
+  }
+}

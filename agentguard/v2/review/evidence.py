@@ -7,8 +7,9 @@ from .errors import GuardError
 
 def identity(ref):
     if (not isinstance(ref, dict) or
-        not {"artifact_id", "version", "sha256"} <= ref.keys() or
-        set(ref) - {"artifact_id", "version", "sha256", "span", "json_pointer"} or
+        not {"schema_version", "artifact_id", "version", "sha256", "span", "json_pointer"} <= ref.keys() or
+        ref["schema_version"] != "0.1" or
+        set(ref) - {"schema_version", "artifact_id", "version", "sha256", "span", "json_pointer"} or
         not isinstance(ref["artifact_id"], str) or not ref["artifact_id"] or
         type(ref["version"]) is not int or ref["version"] < 1 or
         not isinstance(ref["sha256"], str) or
@@ -40,7 +41,7 @@ def pointer_value(content, pointer):
 
 
 def evidence_index(req):
-    blocks = [req["current_object"], *req["evidence_blocks"]]
+    blocks = [{"ref": req["subject_ref"], "content": req["subject"]}, *req["evidence"]]
     result = {}
     for block in blocks:
         key = identity(block["ref"])
@@ -49,7 +50,7 @@ def evidence_index(req):
         if key in result and result[key] != block["content"]:
             raise GuardError("INVALID_REFERENCE")
         result[key] = block["content"]
-    if req["subject_ref"] != req["current_object"]["ref"]:
+    if not any(block["ref"] == req["subject_ref"] for block in req["evidence"]):
         raise GuardError("INVALID_REFERENCE")
     return result
 

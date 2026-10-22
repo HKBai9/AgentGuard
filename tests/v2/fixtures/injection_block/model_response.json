@@ -8,18 +8,24 @@
   "policy_version": "policy-1",
   "context_version": "context-1",
   "subject_ref": {
+    "schema_version": "0.1",
     "artifact_id": "doc-synthetic",
     "version": 1,
-    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    "sha256": "e47263be33ff640b2ffa21f588d3782e6ebde6168be8285b185360463fc9d560",
+    "json_pointer": null,
+    "span": null
   },
   "decision": "BLOCK",
   "reason_code": "UNTRUSTED_INSTRUCTION",
   "reason_summary": "发现改变任务权限的外部指令。",
   "evidence_refs": [
     {
+      "schema_version": "0.1",
       "artifact_id": "doc-synthetic",
       "version": 1,
-      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      "sha256": "e47263be33ff640b2ffa21f588d3782e6ebde6168be8285b185360463fc9d560",
+      "json_pointer": null,
+      "span": null
     }
   ],
   "findings": [
@@ -28,15 +34,18 @@
       "affected_action_field": null,
       "evidence_refs": [
         {
+          "schema_version": "0.1",
           "artifact_id": "doc-synthetic",
           "version": 1,
-          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "sha256": "e47263be33ff640b2ffa21f588d3782e6ebde6168be8285b185360463fc9d560",
+          "json_pointer": null,
           "span": [
             9,
             41
           ]
         }
-      ]
+      ],
+      "schema_version": "0.1"
     }
   ],
   "redaction_targets": [],

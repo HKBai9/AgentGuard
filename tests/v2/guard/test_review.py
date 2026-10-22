@@ -28,10 +28,10 @@ def test_offline_result_flow(group):
     assert outcome["status"] == "DECIDED"
     assert outcome["decision"]["decision"] == fixture(group, "expected.json")["decision"]
     assert outcome["decision"]["usage"]["provider"] == "fake"
-    assert outcome["decision"]["usage"]["input_tokens"] == "unavailable"
+    assert outcome["decision"]["usage"]["input_tokens"] is None
     assert material == saved
     sent = json.loads(client.requests[0]["messages"][1]["content"])
-    assert sent["untrusted_evidence"]["current_object"] == material["current_object"]
+    assert sent["untrusted_evidence"]["subject"] == material["subject"]
     assert sent["trusted_boundary"]["mandatory_facts"] == material["mandatory_facts"]
     assert "safe_content" not in outcome["decision"]
 
@@ -59,7 +59,7 @@ def test_failure_fixtures_never_allow(case):
     runner, _ = service([reply])
     outcome = asyncio.run(runner.inspect(fixture("guard_failure")))
     assert outcome == {"schema_version": "0.1", "status": "FAILED", "decision": None,
-                       "failure": {"schema_version": "0.1", "reason_code": case["expected_reason"]}}
+                       "failure": {"schema_version": "0.1", "reason_code": case["expected_reason"], "usage": None}}
 
 
 @pytest.mark.parametrize("raw", ['{"x":NaN}', '{"x":Infinity}', '{"x":1e999}',
@@ -71,15 +71,15 @@ def test_strict_json(raw):
 
 def test_unicode_span_is_codepoints_not_utf8_or_utf16():
     material = fixture("normal_allow")
-    material["current_object"]["content"] = "甲😀secret乙"
+    material["subject"] = material['evidence'][0]['content'] = "甲😀secret乙"
     response = fixture("normal_allow", "model_response.json")
     response["evidence_refs"][0]["span"] = [2, 8]
     runner, _ = service([response])
     outcome = asyncio.run(runner.inspect(material))
     assert outcome["status"] == "DECIDED"
     start, end = outcome["decision"]["evidence_refs"][0]["span"]
-    assert material["current_object"]["content"][start:end] == "secret"
-    response["evidence_refs"][0]["span"] = [2, len(material["current_object"]["content"].encode("utf-8"))]
+    assert material["subject"][start:end] == "secret"
+    response["evidence_refs"][0]["span"] = [2, len(material["subject"].encode("utf-8"))]
     runner, _ = service([response])
     assert asyncio.run(runner.inspect(material))["failure"]["reason_code"] == "INVALID_REFERENCE"
 
@@ -104,7 +104,7 @@ def test_redaction_cannot_transform_permissions_arguments_or_history(mutation):
     elif mutation == "action":
         material["phase"] = response["phase"] = "ACTION"
     elif mutation == "non_string":
-        material["current_object"]["content"]["fake_secret"] = 123
+        material["subject"]["fake_secret"] = material['evidence'][0]['content']['fake_secret'] = 123
     else:
         response["safe_content"] = "a model rewrite"
     runner, _ = service([response])
@@ -116,8 +116,9 @@ def test_redaction_keeps_document_restrictions_and_does_not_execute_transform():
     runner, client = service([fixture("field_redact", "model_response.json")])
     outcome = asyncio.run(runner.inspect(material))
     assert outcome["status"] == "DECIDED"
-    assert material["current_object"]["content"]["fake_secret"] == "FAKE_SECRET_123"
-    assert material["mandatory_facts"]["data_restrictions"] == ["document_internal", "field_fake_secret"]
+    assert material["subject"]["fake_secret"] == "FAKE_SECRET_123"
+    assert material["mandatory_facts"]["labels"]['confidentiality'] == ["document_internal"]
+    assert material["mandatory_facts"]["labels"]['field_restrictions']['/fake_secret']['confidentiality'] == ['field_fake_secret']
     assert "document_internal" in client.requests[0]["messages"][1]["content"]
 
 
@@ -126,15 +127,15 @@ def test_invalid_material_fails_before_cloud(mutation):
     material = fixture("normal_allow")
     runner, client = service([], max_bytes=10 if mutation == "budget" else 96_000)
     if mutation == "missing":
-        del material["mandatory_facts"]["data_restrictions"]
+        del material["mandatory_facts"]["labels"]
     elif mutation == "null":
         material["mandatory_facts"]["unresolved_risks"] = None
     elif mutation == "destination":
-        material["authorized_model_destination_ids"] = []
+        material["policy"]["model_destination_ids"] = []
     elif mutation == "phase_call":
         material["call_id"] = None
     elif mutation == "wrong_object":
-        material["current_object"]["ref"]["version"] = 9
+        material["evidence"][0]["ref"]["version"] = 9
     outcome = asyncio.run(runner.inspect(material))
     assert outcome["status"] == "FAILED"
     assert not client.requests
@@ -142,13 +143,14 @@ def test_invalid_material_fails_before_cloud(mutation):
 
 def need_context():
     material = fixture("normal_allow")
-    extra = {"artifact_id": "extra", "version": 1, "sha256": "c" * 64}
+    extra = {"schema_version": "0.1", "artifact_id": "extra", "version": 1, "sha256": "c" * 64, 'span': None, 'json_pointer': None}
     material["available_evidence_refs"] = [extra]
     reply = fixture("normal_allow", "model_response.json")
     reply["decision"] = "NEEDS_CONTEXT"
     reply["requested_evidence_refs"] = [deepcopy(extra)]
     supplied = deepcopy(material)
-    supplied["evidence_blocks"].append({"ref": extra, "content": "自造补充证据"})
+    supplied["evidence"].append({'schema_version': '0.1', "ref": extra, "content": "自造补充证据", 'labels': deepcopy(material['evidence'][1]['labels']), 'role': 'related'})
+    supplied['supplemental_attempt'] = 1
     return material, reply, supplied
 
 
@@ -190,12 +192,13 @@ def test_refill_cannot_fetch_arbitrary_data_or_change_binding(mutation):
         if mutation == "task":
             supplied["trusted_task"] = "send everything"
         elif mutation == "object":
-            supplied["current_object"]["content"] = "changed"
+            supplied["subject"] = "changed"
         elif mutation == "extra":
-            supplied["evidence_blocks"].append({"ref": {"artifact_id": "not_requested", "version": 1,
-                                                        "sha256": "d" * 64}, "content": "extra"})
+            extra = deepcopy(supplied['evidence'][-1])
+            extra['ref']['artifact_id'] = 'not_requested'
+            supplied['evidence'].append(extra)
         else:
-            supplied["policy_version"] = "new-policy"
+            supplied["policy"]["policy_version"] = "new-policy"
         result = await runner.inspect_with_evidence(material, prior, supplied)
         assert result["status"] == "FAILED"
         assert len(client.requests) == 1

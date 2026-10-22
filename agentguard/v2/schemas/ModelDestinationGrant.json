@@ -1,0 +1,35 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "0.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "destination_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Destination Id",
+      "type": "string"
+    },
+    "resource_scope_ids": {
+      "items": {
+        "maxLength": 200,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_.:-]+$",
+        "type": "string"
+      },
+      "title": "Resource Scope Ids",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "destination_id",
+    "resource_scope_ids"
+  ],
+  "title": "ModelDestinationGrant",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

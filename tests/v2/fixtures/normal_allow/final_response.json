@@ -8,18 +8,24 @@
   "policy_version": "policy-1",
   "context_version": "context-1",
   "subject_ref": {
+    "schema_version": "0.1",
     "artifact_id": "doc-synthetic",
     "version": 1,
-    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    "sha256": "ef3823379716d014e417c5aa15eb4f0003d9fe5ccb4cc7f105a59e92aab6174d",
+    "json_pointer": null,
+    "span": null
   },
   "decision": "ALLOW",
   "reason_code": "TASK_RELEVANT",
   "reason_summary": "内容符合本地报告任务。",
   "evidence_refs": [
     {
+      "schema_version": "0.1",
       "artifact_id": "doc-synthetic",
       "version": 1,
-      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      "sha256": "ef3823379716d014e417c5aa15eb4f0003d9fe5ccb4cc7f105a59e92aab6174d",
+      "json_pointer": null,
+      "span": null
     }
   ],
   "findings": [],

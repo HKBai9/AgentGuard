@@ -1,0 +1,61 @@
+{
+  "schema_version": "0.1",
+  "status": "DECIDED",
+  "decision": {
+    "schema_version": "0.1",
+    "review_id": "review_0d2a88706b6b4684838be37b7743f905",
+    "session_id": "session_dd816a7031d5448fbc99701c729e66a5",
+    "turn_id": "turn_67e67268848d4dfa840ac289ac168086",
+    "call_id": "call_7eb505ae268643fa94f14981e268a4b6",
+    "phase": "RESULT",
+    "policy_version": "policy_42742ef7037b47a9b5b00e8db6a7836f",
+    "context_version": "context_fb5e61b91dfd48e18119719b62b0238e",
+    "subject_ref": {
+      "schema_version": "0.1",
+      "artifact_id": "artifact_4c679529ff1f41fdb99b8ede246633f5",
+      "version": 1,
+      "sha256": "f2678691308c70a0b3fe16839f1b696abc0c9e08ba37b01ccb9a2a7fe0751c68",
+      "json_pointer": null,
+      "span": null
+    },
+    "decision": "REDACT",
+    "reason_code": "FIXTURE_DECISION",
+    "reason_summary": "test",
+    "evidence_refs": [
+      {
+        "schema_version": "0.1",
+        "artifact_id": "artifact_4c679529ff1f41fdb99b8ede246633f5",
+        "version": 1,
+        "sha256": "f2678691308c70a0b3fe16839f1b696abc0c9e08ba37b01ccb9a2a7fe0751c68",
+        "json_pointer": null,
+        "span": null
+      }
+    ],
+    "findings": [],
+    "redaction_targets": [
+      {
+        "schema_version": "0.1",
+        "evidence_ref": {
+          "schema_version": "0.1",
+          "artifact_id": "artifact_4c679529ff1f41fdb99b8ede246633f5",
+          "version": 1,
+          "sha256": "f2678691308c70a0b3fe16839f1b696abc0c9e08ba37b01ccb9a2a7fe0751c68",
+          "json_pointer": "/secret",
+          "span": null
+        },
+        "transform_id": "mask_secret"
+      }
+    ],
+    "requested_evidence_refs": [],
+    "usage": {
+      "schema_version": "0.1",
+      "provider": "fixture",
+      "model": "offline",
+      "input_tokens": null,
+      "output_tokens": null,
+      "latency_ms": 0.0,
+      "attempts": 1
+    }
+  },
+  "failure": null
+}

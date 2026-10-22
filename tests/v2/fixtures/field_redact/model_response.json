@@ -8,18 +8,24 @@
   "policy_version": "policy-1",
   "context_version": "context-1",
   "subject_ref": {
+    "schema_version": "0.1",
     "artifact_id": "doc-synthetic",
     "version": 1,
-    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    "sha256": "e50783e9c9bdd8770540bd4c29f7e25d5a03ba8e1fd3e1aba12e55705d9f0834",
+    "json_pointer": null,
+    "span": null
   },
   "decision": "REDACT",
   "reason_code": "SENSITIVE_FIELD",
   "reason_summary": "需要预批准的字段替换；整份文档仍为内部资料。",
   "evidence_refs": [
     {
+      "schema_version": "0.1",
       "artifact_id": "doc-synthetic",
       "version": 1,
-      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      "sha256": "e50783e9c9bdd8770540bd4c29f7e25d5a03ba8e1fd3e1aba12e55705d9f0834",
+      "json_pointer": null,
+      "span": null
     }
   ],
   "findings": [
@@ -28,23 +34,29 @@
       "affected_action_field": null,
       "evidence_refs": [
         {
+          "schema_version": "0.1",
           "artifact_id": "doc-synthetic",
           "version": 1,
-          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-          "json_pointer": "/fake_secret"
+          "sha256": "e50783e9c9bdd8770540bd4c29f7e25d5a03ba8e1fd3e1aba12e55705d9f0834",
+          "json_pointer": "/fake_secret",
+          "span": null
         }
-      ]
+      ],
+      "schema_version": "0.1"
     }
   ],
   "redaction_targets": [
     {
       "evidence_ref": {
+        "schema_version": "0.1",
         "artifact_id": "doc-synthetic",
         "version": 1,
-        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        "json_pointer": "/fake_secret"
+        "sha256": "e50783e9c9bdd8770540bd4c29f7e25d5a03ba8e1fd3e1aba12e55705d9f0834",
+        "json_pointer": "/fake_secret",
+        "span": null
       },
-      "transform_id": "replace_json_string"
+      "transform_id": "replace_json_string",
+      "schema_version": "0.1"
     }
   ],
   "requested_evidence_refs": []

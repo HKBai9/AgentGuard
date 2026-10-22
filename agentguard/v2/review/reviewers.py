@@ -2,15 +2,18 @@
 
 import re
 
-from .boundary import PublicContracts, payload, strict_json, versioned
+from .boundary import PublicContracts, payload, strict_json, versioned, wire_usage
 from .errors import GuardError
 from .evidence import check_ref, check_requested, evidence_index, identity, pointer_value
-from .prompts import BINDINGS, PROMPT_VERSION, review_messages
+from .prompts import BINDINGS, PROMPT_VERSION, review_messages, bindings
 
 
 def authorize_destination(req, client):
-    if (req.get("model_destination_id") != client.destination_id or
-        client.destination_id not in req.get("authorized_model_destination_ids", [])):
+    host = req["host_policy"]
+    policy = req.get("policy", host)
+    if (host["guard_destination_id"] != client.destination_id or
+        client.destination_id not in {g['destination_id'] for g in host['model_destination_ids']} or
+        client.destination_id not in {g['destination_id'] for g in policy['model_destination_ids']}):
         raise GuardError("MODEL_DESTINATION_DENIED")
 
 
@@ -21,7 +24,7 @@ def validate_analysis(data, req):
         raise GuardError("INVALID_SCHEMA")
     if data["schema_version"] != "0.1":
         raise GuardError("INVALID_SCHEMA")
-    if any(data[k] != req[k] for k in BINDINGS):
+    if any(data[k] != bindings(req)[k] for k in BINDINGS):
         raise GuardError("INVALID_REFERENCE")
     if data["decision"] not in ("ALLOW", "BLOCK", "REDACT", "NEEDS_CONTEXT"):
         raise GuardError("INVALID_SCHEMA")
@@ -39,7 +42,8 @@ def validate_analysis(data, req):
         raise GuardError("INVALID_REFERENCE")
     for finding in data["findings"]:
         if (not isinstance(finding, dict) or
-            set(finding) != {"finding_type", "affected_action_field", "evidence_refs"} or
+            set(finding) != {"schema_version", "finding_type", "affected_action_field", "evidence_refs"} or
+            finding['schema_version'] != '0.1' or
             not isinstance(finding["finding_type"], str) or not finding["finding_type"] or
             not isinstance(finding["evidence_refs"], list) or not finding["evidence_refs"]):
             raise GuardError("INVALID_SCHEMA")
@@ -48,7 +52,7 @@ def validate_analysis(data, req):
             # S1 uses a JSON pointer into the ACTION object; other phases use null.
             if req["phase"] != "ACTION" or not isinstance(field, str) or not field:
                 raise GuardError("INVALID_REFERENCE")
-            pointer_value(req["current_object"]["content"], field)
+            pointer_value(req["subject"]["args"], field)
         for ref in finding["evidence_refs"]:
             check_ref(ref, index, precise=True)
     if data["decision"] in ("BLOCK", "REDACT") and not data["findings"]:
@@ -57,7 +61,8 @@ def validate_analysis(data, req):
         if req["phase"] == "ACTION" or not data["redaction_targets"]:
             raise GuardError("INVALID_SCHEMA")
         for target in data["redaction_targets"]:
-            if not isinstance(target, dict) or set(target) != {"evidence_ref", "transform_id"}:
+            if (not isinstance(target, dict) or set(target) != {"schema_version", "evidence_ref", "transform_id"}
+                or target['schema_version'] != '0.1'):
                 raise GuardError("INVALID_SCHEMA")
             if target["transform_id"] not in req["allowed_transform_ids"]:
                 raise GuardError("INVALID_REFERENCE")
@@ -90,7 +95,7 @@ class Reviewer:
         authorize_destination(data, self.client)
         messages = review_messages(data)
         if self.request_sink is not None:
-            self.request_sink(payload({"binding": {k: data[k] for k in BINDINGS},
+            self.request_sink(payload({"binding": bindings(data),
                                        "prompt_version": PROMPT_VERSION,
                                        "model": self.client.model,
                                        "destination_id": self.client.destination_id,
@@ -99,5 +104,5 @@ class Reviewer:
                                            prompt_version=PROMPT_VERSION)
         analysis = strict_json(reply.content)
         validate_analysis(analysis, data)
-        analysis["usage"] = payload(reply.usage)
+        analysis["usage"] = wire_usage(reply.usage)
         return self.contracts.parse("ReviewDecision", analysis)
